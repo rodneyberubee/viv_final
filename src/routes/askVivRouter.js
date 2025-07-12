@@ -17,14 +17,23 @@ export const askVivRouter = async (req, res) => {
   }
 
   let parsed = {};
+  let messages = [];
 
-  if (Array.isArray(req.body.messages) && req.body.messages.length > 0) {
+  // Normalize input into messages[]
+  if (Array.isArray(req.body.messages)) {
+    messages = req.body.messages;
     console.log('[askVivRouter] 📥 Using messages[] input for GPT parsing');
-    const aiParsed = await extractFields({ messages: req.body.messages }, restaurantId);
+  } else if (req.body.userMessage) {
+    messages = [{ role: 'user', content: typeof req.body.userMessage === 'string' ? req.body.userMessage : req.body.userMessage.text }];
+    console.log('[askVivRouter] 🧾 Converted userMessage to messages[]:', messages);
+  }
+
+  // If we now have messages, run GPT extraction
+  if (messages.length > 0) {
+    const aiParsed = await extractFields({ messages }, restaurantId);
     console.log('[askVivRouter] 🔍 AI Parsed Response:', aiParsed);
 
     if (!aiParsed) {
-      console.warn('[askVivRouter] ❌ AI failed to parse messages — returning fallback chat');
       return res.status(200).json({ type: 'chat', parsed: {}, raw: '', error: false });
     }
 
@@ -33,28 +42,6 @@ export const askVivRouter = async (req, res) => {
       type: aiParsed.type,
       raw: aiParsed.raw
     };
-  } else if (req.body.userMessage) {
-    parsed = typeof req.body.userMessage === 'string'
-      ? { text: req.body.userMessage }
-      : req.body.userMessage;
-
-    console.log('[askVivRouter] 📥 Parsed userMessage input:', parsed);
-
-    if (parsed.text) {
-      console.log('[askVivRouter] 🤖 Detected free-text. Parsing via extractFields...');
-      const aiParsed = await extractFields({ text: parsed.text }, restaurantId);
-      console.log('[askVivRouter] 🔍 AI Parsed Response:', aiParsed);
-
-      if (!aiParsed) {
-        return res.status(200).json({ type: 'chat', parsed: {}, raw: parsed.text, error: false });
-      }
-
-      parsed = {
-        ...aiParsed.parsed,
-        type: aiParsed.type,
-        raw: aiParsed.raw
-      };
-    }
   } else if (req.body.type && req.body.parsed) {
     parsed = req.body.parsed;
     parsed.type = req.body.type;
