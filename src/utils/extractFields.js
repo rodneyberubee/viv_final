@@ -15,7 +15,15 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Then, in your own words, briefly confirm what you’ve done in a friendly tone.',
     'If the user hasn’t provided enough info, continue the conversation naturally to gather what’s missing.',
     '',
+    'Key Rules:',
+    '- If the user asks whether a slot is available (without giving name or party size), treat it as availability.check.',
+    '- If the user says something like "cancel ABC123" or "ref code is ABC123", treat that as a cancellation request.',
+    '',
     'Examples:',
+    '0. Availability check:',
+    '{"type":"availability.check","date":"2025-07-13","timeSlot":"18:00"}',
+    '(Then say whether that time is available, and suggest nearby options if not)',
+    '',
     '1. Reservation:',
     '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
     '(Then confirm the booking naturally in your own words)',
@@ -28,10 +36,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
     '(Then confirm the change naturally in your own words)',
     '',
-    '4. Availability:',
-    '{"type":"availability.check","date":"2025-07-12","timeSlot":"18:30"}',
-    '(Then say you’ll check or report if it’s available)',
-    '',
     'Do not repeat these examples. Use your own words freely.'
   ].join('\n');
 
@@ -42,7 +46,7 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
-  // ✅ Ignore known structured system echo to prevent duplicate reservations
+  // ✅ Prevent infinite loops by skipping reservation object echoes
   const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
     vivInput.messages.some(
       m => m.role === 'system' &&
@@ -99,6 +103,20 @@ export const extractFields = async (vivInput, restaurantId) => {
     let parsed;
     try {
       parsed = JSON.parse(match[0]);
+
+      // 🔍 Fallback: Try to extract confirmationCode from raw message if missing
+      if (
+        parsed.type === 'reservation.cancel' &&
+        !parsed.confirmationCode &&
+        typeof aiResponse === 'string'
+      ) {
+        const fallbackCode = aiResponse.match(/\b[A-Z0-9]{6,}\b/);
+        if (fallbackCode) {
+          parsed.confirmationCode = fallbackCode[0];
+          console.log('[extractFields] 🛠 Fallback confirmationCode applied:', parsed.confirmationCode);
+        }
+      }
+
       if (!parsed.type) {
         console.warn('[extractFields] ❌ No "type" field in parsed JSON:', parsed);
         return {
