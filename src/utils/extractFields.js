@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import { confirmOnly } from '../routes/confirmOnly.js'; // 🧠 internal route, not HTTP call
 dotenv.config();
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -113,11 +112,15 @@ export const extractFields = async (vivInput, restaurantId) => {
         };
       }
 
-      // ✅ Internal confirmOnly logic, not fetch
       if (parsed.type === 'reservation.complete') {
-        const confirmResult = await confirmOnly({ body: parsed, params: { restaurantId } });
+        const confirmRes = await fetch(`http://localhost:5000/api/confirmOnly/${restaurantId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed)
+        });
 
-        if (confirmResult?.status === 409) {
+        const confirmJson = await confirmRes.json();
+        if (confirmRes.status === 409) {
           console.warn('[extractFields] ⛔️ Reservation rejected — converting to availability fallback');
           return {
             type: 'availability.check.unavailable',
@@ -125,8 +128,8 @@ export const extractFields = async (vivInput, restaurantId) => {
               type: 'availability.check.unavailable',
               date: parsed.date,
               timeSlot: parsed.timeSlot,
-              reason: confirmResult.body?.error,
-              alternatives: confirmResult.body?.alternatives || []
+              reason: confirmJson.error,
+              alternatives: confirmJson.alternatives || []
             },
             raw: aiResponse
           };
