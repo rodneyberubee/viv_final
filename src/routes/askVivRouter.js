@@ -87,6 +87,7 @@ export const askVivRouter = async (req, res) => {
       case 'reservation.complete': {
         console.log('[askVivRouter] 📤 Routing to reservation.js');
         const result = await reservation(newReq, res, false);
+        if (res.headersSent) return;
         return res.status(result.status || 200).json({
           type: parsed.type,
           parsed,
@@ -97,6 +98,7 @@ export const askVivRouter = async (req, res) => {
       case 'reservation.change': {
         console.log('[askVivRouter] 📤 Routing to changeReservation.js');
         const changeResult = await changeReservation(newReq, res, true);
+        if (res.headersSent) return;
         return res.status(changeResult.status || 200).json({
           type: parsed.type,
           parsed,
@@ -107,6 +109,7 @@ export const askVivRouter = async (req, res) => {
       case 'reservation.cancel': {
         console.log('[askVivRouter] 📤 Routing to cancelReservation.js');
         const cancelResult = await cancelReservation(newReq, res, true);
+        if (res.headersSent) return;
         return res.status(cancelResult.status || 200).json({
           type: parsed.type,
           parsed,
@@ -117,6 +120,7 @@ export const askVivRouter = async (req, res) => {
       case 'availability.check': {
         console.log('[askVivRouter] 📤 Routing to checkAvailability.js');
         const availabilityResult = await checkAvailability(newReq, res, true);
+        if (res.headersSent) return;
         return res.status(availabilityResult.status || 200).json({
           type: parsed.type,
           parsed,
@@ -135,9 +139,11 @@ export const askVivRouter = async (req, res) => {
     }
   } catch (error) {
     console.error('[askVivRouter] ❌ Uncaught error:', error);
-    return res.status(500).json({
-      type: 'error',
-      message: 'Uh oh! Something went wrong. Please try again in a moment.'
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        type: 'error',
+        message: 'Uh oh! Something went wrong. Please try again in a moment.'
+      });
+    }
   }
 };
