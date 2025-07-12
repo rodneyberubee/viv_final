@@ -32,6 +32,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     '{"type":"availability.check","date":"2025-07-12","timeSlot":"18:30"}',
     '(Then say you’ll check or report if it’s available)',
     '',
+    'Always use one of the following values for `type`: "reservation.complete", "reservation.cancel", "reservation.change", "availability.check"',
     'Do not repeat these examples. Use your own words freely.'
   ].join('\n');
 
@@ -69,7 +70,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    // Match only the first JSON block (non-greedy)
     const match = aiResponse.match(/{.*?}/s);
     if (!match) {
       console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
@@ -83,6 +83,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     let parsed;
     try {
       parsed = JSON.parse(match[0]);
+
       if (!parsed.type) {
         console.warn('[extractFields] ❌ No "type" field in parsed JSON:', parsed);
         return {
@@ -91,6 +92,21 @@ export const extractFields = async (vivInput, restaurantId) => {
           raw: aiResponse
         };
       }
+
+      // 🔄 Normalize type
+      const normalizedType = {
+        cancelReservation: 'reservation.cancel',
+        reservationCancel: 'reservation.cancel',
+        changeReservation: 'reservation.change',
+        reservationChange: 'reservation.change',
+        makeReservation: 'reservation.complete',
+        reservationComplete: 'reservation.complete',
+        checkAvailability: 'availability.check',
+        availabilityCheck: 'availability.check'
+      }[parsed.type] || parsed.type;
+
+      parsed.type = normalizedType;
+
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return {
