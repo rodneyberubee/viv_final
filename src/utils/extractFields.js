@@ -20,9 +20,21 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- If the user says something like "cancel ABC123" or "ref code is ABC123", treat that as a cancellation request.',
     '',
     'Examples:',
+    '0. Availability check:',
+    '{"type":"availability.check","date":"2025-07-13","timeSlot":"18:00"}',
+    '(Then say whether that time is available, and suggest nearby options if not)',
+    '',
+    '1. Reservation:',
     '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
+    '(Then confirm the booking naturally in your own words)',
+    '',
+    '2. Cancellation:',
     '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
+    '(Then confirm the cancellation in your own words)',
+    '',
+    '3. Change:',
     '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
+    '(Then confirm the change naturally in your own words)',
     '',
     'Do not repeat these examples. Use your own words freely.'
   ].join('\n');
@@ -34,6 +46,7 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
+  // ✅ Prevent infinite loops by skipping reservation object echoes
   const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
     vivInput.messages.some(
       m => m.role === 'system' &&
@@ -77,7 +90,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    const match = aiResponse.match(/{[\s\S]+?}/);
+    const match = aiResponse.match(/{.*?}/s);
     if (!match) {
       console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
       return {
@@ -91,6 +104,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     try {
       parsed = JSON.parse(match[0]);
 
+      // 🔍 Fallback: Try to extract confirmationCode from raw message if missing
       if (
         parsed.type === 'reservation.cancel' &&
         !parsed.confirmationCode &&
@@ -111,31 +125,6 @@ export const extractFields = async (vivInput, restaurantId) => {
           raw: aiResponse
         };
       }
-
-      if (parsed.type === 'reservation.complete') {
-        const confirmRes = await fetch(`http://localhost:5000/api/confirmOnly/${restaurantId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parsed)
-        });
-
-        const confirmJson = await confirmRes.json();
-        if (confirmRes.status === 409) {
-          console.warn('[extractFields] ⛔️ Reservation rejected — converting to availability fallback');
-          return {
-            type: 'availability.check.unavailable',
-            parsed: {
-              type: 'availability.check.unavailable',
-              date: parsed.date,
-              timeSlot: parsed.timeSlot,
-              reason: confirmJson.error,
-              alternatives: confirmJson.alternatives || []
-            },
-            raw: aiResponse
-          };
-        }
-      }
-
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return {
