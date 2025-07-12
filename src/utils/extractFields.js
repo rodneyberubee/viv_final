@@ -12,7 +12,6 @@ export const extractFields = async (vivInput, restaurantId) => {
   const systemPrompt = [
     'You are Viv, a helpful and warm AI concierge who helps users make, cancel, or change reservations, or check availability.',
     'When the user has provided all necessary information, respond first with a single valid JSON object.',
-    'Then, in your own words, briefly confirm what you’ve done in a friendly tone.',
     'If the user hasn’t provided enough info, continue the conversation naturally to gather what’s missing.',
     '',
     'Key Rules:',
@@ -22,21 +21,15 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Examples:',
     '0. Availability check:',
     '{"type":"availability.check","date":"2025-07-13","timeSlot":"18:00"}',
-    '(Then say whether that time is available, and suggest nearby options if not)',
     '',
     '1. Reservation:',
     '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
-    '(Then confirm the booking naturally in your own words)',
     '',
     '2. Cancellation:',
     '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
-    '(Then confirm the cancellation in your own words)',
     '',
     '3. Change:',
-    '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
-    '(Then confirm the change naturally in your own words)',
-    '',
-    'Do not repeat these examples. Use your own words freely.'
+    '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -46,7 +39,6 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
-  // ✅ Prevent infinite loops by skipping reservation object echoes
   const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
     vivInput.messages.some(
       m => m.role === 'system' &&
@@ -104,7 +96,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     try {
       parsed = JSON.parse(match[0]);
 
-      // 🔍 Fallback: Try to extract confirmationCode from raw message if missing
       if (
         parsed.type === 'reservation.cancel' &&
         !parsed.confirmationCode &&
