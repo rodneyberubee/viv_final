@@ -116,6 +116,17 @@ export const askVivRouter = async (req, res) => {
         });
       }
 
+      case 'reservation.request': {
+        console.log('[askVivRouter] 📤 Routing to checkAvailability.js (from reservation.request)');
+        const availabilityResult = await checkAvailability(newReq, res, false);
+        if (res.headersSent) return;
+        return res.status(availabilityResult.status || 200).json({
+          type: 'availability.check',
+          parsed,
+          ...availabilityResult.body
+        });
+      }
+
       case 'reservation.change': {
         console.log('[askVivRouter] 📤 Routing to changeReservation.js');
         const changeResult = await changeReservation(newReq, res, true);
