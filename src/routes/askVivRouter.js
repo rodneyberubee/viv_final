@@ -106,9 +106,11 @@ export const askVivRouter = async (req, res) => {
           console.log('[askVivRouter] ⚠️ Reservation conflict — rerouting to availability logic.');
 
           const availabilityResult = await checkAvailability({
+            params: { restaurantId: parsed.restaurantId },
             body: {
               date: parsed.date,
-              restaurantId: parsed.restaurantId
+              restaurantId: parsed.restaurantId,
+              timeSlot: parsed.timeSlot
             }
           }, res, true);
 
