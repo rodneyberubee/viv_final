@@ -84,6 +84,17 @@ export const askVivRouter = async (req, res) => {
           passthrough: true
         });
 
+      case 'reservation.request': {
+        console.log('[askVivRouter] 📤 Routing to checkAvailability.js (from reservation.request)');
+        const availabilityResult = await checkAvailability(newReq, res, false);
+        if (res.headersSent) return;
+        return res.status(availabilityResult.status || 200).json({
+          type: availabilityResult.body?.type || 'availability.check',
+          parsed,
+          ...availabilityResult.body
+        });
+      }
+
       case 'reservation.complete': {
         console.log('[askVivRouter] 📤 Routing to reservation.js');
         const result = await reservation(newReq, res, false);
@@ -113,17 +124,6 @@ export const askVivRouter = async (req, res) => {
           parsed,
           availableTimes: available,
           raw
-        });
-      }
-
-      case 'reservation.request': {
-        console.log('[askVivRouter] 📤 Routing to checkAvailability.js (from reservation.request)');
-        const availabilityResult = await checkAvailability(newReq, res, false);
-        if (res.headersSent) return;
-        return res.status(availabilityResult.status || 200).json({
-          type: 'availability.check',
-          parsed,
-          ...availabilityResult.body
         });
       }
 
