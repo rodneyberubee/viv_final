@@ -116,6 +116,19 @@ export const extractFields = async (vivInput, restaurantId) => {
           raw: aiResponse
         };
       }
+
+      // 🧠 Add dynamic confirmation for reservation.change.success only
+      if (parsed.type === 'reservation.change.success') {
+        const { newDate, newTimeSlot } = parsed;
+        const dynamicMessage = `✅ Your reservation has been successfully updated to ${newTimeSlot} on ${newDate}. Let us know if you need anything else!`;
+
+        return {
+          type: parsed.type,
+          parsed,
+          raw: dynamicMessage
+        };
+      }
+
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return {
