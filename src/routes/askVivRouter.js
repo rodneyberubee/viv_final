@@ -95,6 +95,27 @@ export const askVivRouter = async (req, res) => {
         });
       }
 
+      case 'reservation.fail': {
+        console.log('[askVivRouter] ⚠️ Requested time unavailable — checking alternatives');
+        const availabilityResult = await checkAvailability({
+          body: { date: parsed.date, restaurantId: parsed.restaurantId }
+        }, res, true);
+
+        if (res.headersSent) return;
+
+        const available = availabilityResult?.body?.availableTimes || [];
+        const raw = available.length
+          ? `Sorry, ${parsed.timeSlot} is full. Here are some other times: ${available.join(', ')}.`
+          : `Sorry, ${parsed.timeSlot} is full and no alternatives are currently available.`;
+
+        return res.status(200).json({
+          type: 'reservation.suggest',
+          parsed,
+          availableTimes: available,
+          raw
+        });
+      }
+
       case 'reservation.change': {
         console.log('[askVivRouter] 📤 Routing to changeReservation.js');
         const changeResult = await changeReservation(newReq, res, true);
