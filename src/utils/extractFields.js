@@ -56,7 +56,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    // Try direct JSON extraction first
     const match = aiResponse.match(/{.*?}/s);
     if (match) {
       try {
@@ -75,13 +74,31 @@ export const extractFields = async (vivInput, restaurantId) => {
             parsed: parsed.parsed || {},
             raw: aiResponse
           };
+        } else {
+          console.warn('[extractFields] ❌ Unsupported or missing "type" in parsed JSON:', parsed?.type);
+          // Attempt fallback if type is unsupported
+          const recentUserMessage = messages
+            .filter(m => m.role === 'user')
+            .map(m => m.content)
+            .join(' ')
+            .trim();
+
+          const fallback = tryFallbackParse(recentUserMessage);
+          if (fallback) {
+            console.log('[extractFields] 🔁 Fallback parse success (invalid JSON path):', fallback);
+            return {
+              type: 'changeReservation',
+              parsed: fallback,
+              raw: aiResponse
+            };
+          }
         }
       } catch (e) {
         console.warn('[extractFields] ⚠️ JSON block detected but failed to parse:', e);
       }
     }
 
-    // Fallback logic begins here
+    // Fallback logic begins here (pure chat)
     const recentUserMessage = messages
       .filter(m => m.role === 'user')
       .map(m => m.content)
