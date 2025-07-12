@@ -11,25 +11,15 @@ export const extractFields = async (vivInput, restaurantId) => {
 
   const systemPrompt = [
     'You are Viv, a helpful and warm AI concierge who helps users make, cancel, or change reservations, or check availability.',
-    'When the user has provided all necessary information, respond first with a single valid JSON object.',
-    'If the user hasn’t provided enough info, continue the conversation naturally to gather what’s missing.',
+    'You do not need to return structured JSON — the backend will extract what it needs from your conversation.',
     '',
-    'Key Rules:',
-    '- If the user asks whether a slot is available (without giving name or party size), treat it as availability.check.',
-    '- If the user says something like "cancel ABC123" or "ref code is ABC123", treat that as a cancellation request.',
+    'Simply chat with the guest naturally and ask for:',
+    '- their name',
+    '- party size',
+    '- contact info',
+    '- preferred date and time',
     '',
-    'Examples:',
-    '0. Availability check:',
-    '{"type":"availability.check","parsed":{"date":"2025-07-13","timeSlot":"18:00"}}',
-    '',
-    '1. Reservation:',
-    '{"type":"reservation.request","parsed":{"name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}}',
-    '',
-    '2. Cancellation:',
-    '{"type":"cancelReservation","parsed":{"confirmationCode":"ABC123"}}',
-    '',
-    '3. Change:',
-    '{"type":"changeReservation","parsed":{"confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}}'
+    'Do not confirm anything yourself — the backend will respond after processing your messages.'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -38,22 +28,6 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: vivInput.text || '' }
       ];
-
-  const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
-    vivInput.messages.some(
-      m => m.role === 'system' &&
-           typeof m.content === 'string' &&
-           m.content.includes('"type":"reservation.request"')
-    );
-
-  if (hasStructuredSystemEcho) {
-    console.warn('[extractFields] 🚫 Structured reservation object found in system message. Skipping reparse.');
-    return {
-      type: 'chat',
-      parsed: {},
-      raw: 'System reservation context received — no action taken.'
-    };
-  }
 
   try {
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -82,64 +56,54 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
+    // Try direct JSON extraction first
     const match = aiResponse.match(/{.*?}/s);
-    if (!match) {
-      console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
-      return {
-        type: 'chat',
-        parsed: {},
-        raw: aiResponse
-      };
-    }
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0]);
 
-    let parsed;
-    try {
-      parsed = JSON.parse(match[0]);
+        const supportedTypes = [
+          'reservation.request',
+          'changeReservation',
+          'cancelReservation',
+          'availability.check'
+        ];
 
-      const supportedTypes = [
-        'reservation.request',
-        'changeReservation',
-        'cancelReservation',
-        'availability.check'
-      ];
-
-      if (!parsed.type || !supportedTypes.includes(parsed.type)) {
-        console.warn('[extractFields] ❌ Unsupported or missing "type" in parsed JSON:', parsed.type);
-        return {
-          type: 'chat',
-          parsed: {},
-          raw: aiResponse
-        };
-      }
-
-      if (
-        parsed.type === 'cancelReservation' &&
-        !parsed.confirmationCode &&
-        typeof aiResponse === 'string'
-      ) {
-        const fallbackCode = aiResponse.match(/\b[A-Z0-9]{6,}\b/);
-        if (fallbackCode) {
-          parsed.confirmationCode = fallbackCode[0];
-          console.log('[extractFields] 🛠 Fallback confirmationCode applied:', parsed.confirmationCode);
+        if (parsed?.type && supportedTypes.includes(parsed.type)) {
+          return {
+            type: parsed.type,
+            parsed: parsed.parsed || {},
+            raw: aiResponse
+          };
         }
+      } catch (e) {
+        console.warn('[extractFields] ⚠️ JSON block detected but failed to parse:', e);
       }
+    }
 
-    } catch (e) {
-      console.error('[extractFields] 💥 JSON parse error:', e);
+    // Fallback logic begins here
+    const recentUserMessage = messages
+      .filter(m => m.role === 'user')
+      .map(m => m.content)
+      .join(' ')
+      .trim();
+
+    console.log('[extractFields] 🧪 Attempting fallback parse:', recentUserMessage);
+
+    const fallback = tryFallbackParse(recentUserMessage);
+    if (fallback) {
+      console.log('[extractFields] 🔁 Fallback parse success:', fallback);
       return {
-        type: 'chat',
-        parsed: {},
+        type: 'changeReservation',
+        parsed: fallback,
         raw: aiResponse
       };
     }
 
-    const elapsed = Date.now() - start;
-    console.log(`[extractFields] ✅ Success in ${elapsed}ms — Parsed JSON:`, parsed);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
+    console.warn('[extractFields] ℹ️ No JSON or fallback fields detected — returning as chat');
     return {
-      type: parsed.type,
-      parsed: parsed.parsed || {},
+      type: 'chat',
+      parsed: {},
       raw: aiResponse
     };
 
@@ -150,5 +114,25 @@ export const extractFields = async (vivInput, restaurantId) => {
       parsed: {},
       raw: '❌ Sorry, something went wrong. Please try again.'
     };
+  }
+};
+
+const tryFallbackParse = (text) => {
+  const codeMatch = text.match(/\b[a-zA-Z0-9]{6,10}\b/);
+  const dateTimeMatch = text.match(/(\d{1,2}\s+\w+)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+
+  if (!codeMatch || !dateTimeMatch) return null;
+
+  const confirmationCode = codeMatch[0];
+  const dateStr = `${dateTimeMatch[1]} 2025`;
+  const timeStr = dateTimeMatch[2].replace(/\s+/g, '').toUpperCase();
+
+  try {
+    const parsed = new Date(`${dateStr} ${timeStr}`);
+    const newDate = parsed.toISOString().split('T')[0];
+    const newTimeSlot = parsed.toTimeString().slice(0, 5);
+    return { confirmationCode, newDate, newTimeSlot };
+  } catch {
+    return null;
   }
 };
