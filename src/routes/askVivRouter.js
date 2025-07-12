@@ -98,32 +98,41 @@ export const askVivRouter = async (req, res) => {
       case 'reservation.complete': {
         console.log('[askVivRouter] 📤 Routing to reservation.js');
         const result = await reservation(newReq, res, false);
+
         if (res.headersSent) return;
+
+        // If reservation failed (e.g., slot full), switch to availability fallback
+        if (result.status === 409 || result.body?.error === 'slot_full') {
+          console.log('[askVivRouter] ⚠️ Reservation conflict — rerouting to availability logic.');
+
+          const availabilityResult = await checkAvailability({
+            body: {
+              date: parsed.date,
+              restaurantId: parsed.restaurantId
+            }
+          }, res, true);
+
+          if (res.headersSent) return;
+
+          const available = availabilityResult?.body?.availableTimes || [];
+          const raw = available.length
+            ? `Sorry, ${parsed.timeSlot} is full. Here are some other times: ${available.join(', ')}.`
+            : `Sorry, ${parsed.timeSlot} is full and no alternatives are currently available.`;
+
+          return res.status(200).json({
+            type: 'reservation.suggest',
+            parsed,
+            availableTimes: available,
+            raw
+          });
+        }
+
+        // Only confirm once backend has succeeded
         return res.status(result.status || 200).json({
           type: parsed.type,
           parsed,
-          confirmationCode: result.body?.confirmationCode || null
-        });
-      }
-
-      case 'reservation.fail': {
-        console.log('[askVivRouter] ⚠️ Requested time unavailable — checking alternatives');
-        const availabilityResult = await checkAvailability({
-          body: { date: parsed.date, restaurantId: parsed.restaurantId }
-        }, res, true);
-
-        if (res.headersSent) return;
-
-        const available = availabilityResult?.body?.availableTimes || [];
-        const raw = available.length
-          ? `Sorry, ${parsed.timeSlot} is full. Here are some other times: ${available.join(', ')}.`
-          : `Sorry, ${parsed.timeSlot} is full and no alternatives are currently available.`;
-
-        return res.status(200).json({
-          type: 'reservation.suggest',
-          parsed,
-          availableTimes: available,
-          raw
+          confirmationCode: result.body?.confirmationCode || null,
+          raw: `Reservation confirmed for ${parsed.name} for ${parsed.partySize} guests at ${parsed.timeSlot} on ${parsed.date}.`
         });
       }
 
