@@ -20,16 +20,16 @@ export const extractFields = async (vivInput, restaurantId) => {
     '',
     'Examples:',
     '0. Availability check:',
-    '{"type":"availability.check","date":"2025-07-13","timeSlot":"18:00"}',
+    '{"type":"availability.check","parsed":{"date":"2025-07-13","timeSlot":"18:00"}}',
     '',
     '1. Reservation:',
-    '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
+    '{"type":"reservation.request","parsed":{"name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}}',
     '',
     '2. Cancellation:',
-    '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
+    '{"type":"cancelReservation","parsed":{"confirmationCode":"ABC123"}}',
     '',
     '3. Change:',
-    '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}'
+    '{"type":"changeReservation","parsed":{"confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}}'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -43,7 +43,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     vivInput.messages.some(
       m => m.role === 'system' &&
            typeof m.content === 'string' &&
-           m.content.includes('"type":"reservation.complete"')
+           m.content.includes('"type":"reservation.request"')
     );
 
   if (hasStructuredSystemEcho) {
@@ -96,8 +96,24 @@ export const extractFields = async (vivInput, restaurantId) => {
     try {
       parsed = JSON.parse(match[0]);
 
+      const supportedTypes = [
+        'reservation.request',
+        'changeReservation',
+        'cancelReservation',
+        'availability.check'
+      ];
+
+      if (!parsed.type || !supportedTypes.includes(parsed.type)) {
+        console.warn('[extractFields] ❌ Unsupported or missing "type" in parsed JSON:', parsed.type);
+        return {
+          type: 'chat',
+          parsed: {},
+          raw: aiResponse
+        };
+      }
+
       if (
-        parsed.type === 'reservation.cancel' &&
+        parsed.type === 'cancelReservation' &&
         !parsed.confirmationCode &&
         typeof aiResponse === 'string'
       ) {
@@ -106,28 +122,6 @@ export const extractFields = async (vivInput, restaurantId) => {
           parsed.confirmationCode = fallbackCode[0];
           console.log('[extractFields] 🛠 Fallback confirmationCode applied:', parsed.confirmationCode);
         }
-      }
-
-      if (!parsed.type) {
-        console.warn('[extractFields] ❌ No "type" field in parsed JSON:', parsed);
-        return {
-          type: 'chat',
-          parsed: {},
-          raw: aiResponse
-        };
-      }
-
-      // 🧠 Add dynamic confirmation for reservation.change.success only
-      if (parsed.type === 'reservation.change.success') {
-        const { newDate, newTimeSlot } = parsed;
-        const confirmationJson = JSON.stringify(parsed);
-        const dynamicMessage = `✅ Your reservation has been successfully updated to ${newTimeSlot} on ${newDate}. Let us know if you need anything else!`;
-
-        return {
-          type: parsed.type,
-          parsed,
-          raw: confirmationJson + '\n' + dynamicMessage
-        };
       }
 
     } catch (e) {
@@ -145,7 +139,7 @@ export const extractFields = async (vivInput, restaurantId) => {
 
     return {
       type: parsed.type,
-      parsed,
+      parsed: parsed.parsed || {},
       raw: aiResponse
     };
 
