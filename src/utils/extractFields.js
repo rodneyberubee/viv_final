@@ -42,6 +42,23 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
+  // ✅ Ignore known structured system echo to prevent duplicate reservations
+  const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
+    vivInput.messages.some(
+      m => m.role === 'system' &&
+           typeof m.content === 'string' &&
+           m.content.includes('"type":"reservation.complete"')
+    );
+
+  if (hasStructuredSystemEcho) {
+    console.warn('[extractFields] 🚫 Structured reservation object found in system message. Skipping reparse.');
+    return {
+      type: 'chat',
+      parsed: {},
+      raw: 'System reservation context received — no action taken.'
+    };
+  }
+
   try {
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -69,7 +86,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    // Match only the first JSON block (non-greedy)
     const match = aiResponse.match(/{.*?}/s);
     if (!match) {
       console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
