@@ -138,14 +138,14 @@ export const reservation = async (req, res, autoRespond = true) => {
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
-      const results = [];
+      const results = { before: null, after: null };
       let forward = centerTime;
       let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.add(15, 'minute');
         if (isSlotAvailable(forward.format('HH:mm'))) {
-          results.push(forward.format('HH:mm'));
+          results.after = forward.format('HH:mm');
           break;
         }
       }
@@ -153,18 +153,22 @@ export const reservation = async (req, res, autoRespond = true) => {
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.subtract(15, 'minute');
         if (isSlotAvailable(backward.format('HH:mm'))) {
-          results.push(backward.format('HH:mm'));
+          results.before = backward.format('HH:mm');
           break;
         }
       }
 
-      return [...new Set(results)];
+      return results;
     };
 
     if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
       const payload = {
-        type: 'reservation.error',
-        error: blocked.length > 0 ? 'time_blocked' : 'slot_full',
+        type: 'availability.check.unavailable',
+        available: false,
+        reason: blocked.length > 0 ? 'blocked' : 'full',
+        date: normalizedDate,
+        timeSlot: normalizedTime,
+        remaining: 0,
         alternatives: findNextAvailableSlots(reservationTime)
       };
       return autoRespond ? res.status(409).json(payload) : { status: 409, body: payload };
