@@ -84,7 +84,7 @@ export const askVivRouter = async (req, res) => {
           passthrough: true
         });
 
-      case 'reservation.complete':
+      case 'reservation.complete': {
         console.log('[askVivRouter] 📤 Routing to reservation.js');
         const result = await reservation(newReq, res, false);
         return res.status(result.status || 200).json({
@@ -92,8 +92,9 @@ export const askVivRouter = async (req, res) => {
           parsed,
           confirmationCode: result.body?.confirmationCode || null
         });
+      }
 
-      case 'reservation.change':
+      case 'reservation.change': {
         console.log('[askVivRouter] 📤 Routing to changeReservation.js');
         const changeResult = await changeReservation(newReq, res, true);
         return res.status(changeResult.status || 200).json({
@@ -101,8 +102,9 @@ export const askVivRouter = async (req, res) => {
           parsed,
           ...changeResult.body
         });
+      }
 
-      case 'reservation.cancel':
+      case 'reservation.cancel': {
         console.log('[askVivRouter] 📤 Routing to cancelReservation.js');
         const cancelResult = await cancelReservation(newReq, res, true);
         return res.status(cancelResult.status || 200).json({
@@ -110,8 +112,9 @@ export const askVivRouter = async (req, res) => {
           parsed,
           ...cancelResult.body
         });
+      }
 
-      case 'availability.check':
+      case 'availability.check': {
         console.log('[askVivRouter] 📤 Routing to checkAvailability.js');
         const availabilityResult = await checkAvailability(newReq, res, true);
         return res.status(availabilityResult.status || 200).json({
@@ -119,6 +122,7 @@ export const askVivRouter = async (req, res) => {
           parsed,
           ...availabilityResult.body
         });
+      }
 
       default:
         console.warn('[askVivRouter] ⚠️ Unrecognized type:', parsed.type);
