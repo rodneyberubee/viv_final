@@ -89,7 +89,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    // 🎯 More resilient JSON extraction
     const match = aiResponse.match(/{[\s\S]+?}/);
     if (!match) {
       console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
@@ -123,6 +122,31 @@ export const extractFields = async (vivInput, restaurantId) => {
           parsed: {},
           raw: aiResponse
         };
+      }
+
+      // Fallback logic if reservation fails backend validation
+      if (parsed.type === 'reservation.complete') {
+        const confirmRes = await fetch(`http://localhost:5000/api/confirmOnly/${restaurantId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsed)
+        });
+
+        const confirmJson = await confirmRes.json();
+        if (confirmRes.status === 409) {
+          console.warn('[extractFields] ⛔️ Reservation rejected — converting to availability fallback');
+          return {
+            type: 'availability.check.unavailable',
+            parsed: {
+              type: 'availability.check.unavailable',
+              date: parsed.date,
+              timeSlot: parsed.timeSlot,
+              reason: confirmJson.error,
+              alternatives: confirmJson.alternatives || []
+            },
+            raw: aiResponse
+          };
+        }
       }
 
     } catch (e) {
