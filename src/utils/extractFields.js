@@ -120,12 +120,13 @@ export const extractFields = async (vivInput, restaurantId) => {
       // 🧠 Add dynamic confirmation for reservation.change.success only
       if (parsed.type === 'reservation.change.success') {
         const { newDate, newTimeSlot } = parsed;
+        const confirmationJson = JSON.stringify(parsed);
         const dynamicMessage = `✅ Your reservation has been successfully updated to ${newTimeSlot} on ${newDate}. Let us know if you need anything else!`;
 
         return {
           type: parsed.type,
           parsed,
-          raw: dynamicMessage
+          raw: confirmationJson + '\n' + dynamicMessage
         };
       }
 
