@@ -21,6 +21,24 @@ export const createReservation = async (parsed, config) => {
     status: 'confirmed'
   };
 
+  // ✅ Deduplication logic
+  const filter = `AND(
+    {name} = '${name}',
+    {date} = '${date}',
+    {timeSlot} = '${timeSlot}',
+    {contactInfo} = '${contactInfo}'
+  )`;
+
+  const existing = await base(tableName).select({
+    filterByFormula: filter,
+    maxRecords: 1
+  }).firstPage();
+
+  if (existing.length > 0) {
+    console.log('[DEBUG] Duplicate reservation found — skipping creation.');
+    return { confirmationCode: existing[0].fields.rawConfirmationCode || 'existing' };
+  }
+
   console.log('[DEBUG] Writing to Airtable:', fields);
   await base(tableName).create([{ fields }]);
   return { confirmationCode };
