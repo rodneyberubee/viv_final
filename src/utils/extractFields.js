@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import { confirmOnly } from '../routes/confirmOnly.js'; // 🧠 internal route, not HTTP call
 dotenv.config();
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -20,21 +21,9 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- If the user says something like "cancel ABC123" or "ref code is ABC123", treat that as a cancellation request.',
     '',
     'Examples:',
-    '0. Availability check:',
-    '{"type":"availability.check","date":"2025-07-13","timeSlot":"18:00"}',
-    '(Then say whether that time is available, and suggest nearby options if not)',
-    '',
-    '1. Reservation:',
     '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
-    '(Then confirm the booking naturally in your own words)',
-    '',
-    '2. Cancellation:',
     '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
-    '(Then confirm the cancellation in your own words)',
-    '',
-    '3. Change:',
     '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
-    '(Then confirm the change naturally in your own words)',
     '',
     'Do not repeat these examples. Use your own words freely.'
   ].join('\n');
@@ -124,16 +113,11 @@ export const extractFields = async (vivInput, restaurantId) => {
         };
       }
 
-      // Fallback logic if reservation fails backend validation
+      // ✅ Internal confirmOnly logic, not fetch
       if (parsed.type === 'reservation.complete') {
-        const confirmRes = await fetch(`http://localhost:5000/api/confirmOnly/${restaurantId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parsed)
-        });
+        const confirmResult = await confirmOnly({ body: parsed, params: { restaurantId } });
 
-        const confirmJson = await confirmRes.json();
-        if (confirmRes.status === 409) {
+        if (confirmResult?.status === 409) {
           console.warn('[extractFields] ⛔️ Reservation rejected — converting to availability fallback');
           return {
             type: 'availability.check.unavailable',
@@ -141,8 +125,8 @@ export const extractFields = async (vivInput, restaurantId) => {
               type: 'availability.check.unavailable',
               date: parsed.date,
               timeSlot: parsed.timeSlot,
-              reason: confirmJson.error,
-              alternatives: confirmJson.alternatives || []
+              reason: confirmResult.body?.error,
+              alternatives: confirmResult.body?.alternatives || []
             },
             raw: aiResponse
           };
