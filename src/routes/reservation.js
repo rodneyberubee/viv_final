@@ -36,12 +36,12 @@ export const createReservation = async (parsed, config) => {
 
   if (existing.length > 0) {
     console.log('[DEBUG] Duplicate reservation found — skipping creation.');
-    return { confirmationCode: existing[0].fields.rawConfirmationCode || 'existing' };
+    return { confirmationCode: existing[0].fields.rawConfirmationCode || null, duplicate: true };
   }
 
   console.log('[DEBUG] Writing to Airtable:', fields);
   await base(tableName).create([{ fields }]);
-  return { confirmationCode };
+  return { confirmationCode, duplicate: false };
 };
 
 export const reservation = async (req, res, autoRespond = true) => {
@@ -170,7 +170,7 @@ export const reservation = async (req, res, autoRespond = true) => {
       return autoRespond ? res.status(409).json(payload) : { status: 409, body: payload };
     }
 
-    const { confirmationCode } = await createReservation(parsed, config);
+    const { confirmationCode, duplicate } = await createReservation(parsed, config);
 
     const payload = {
       type: 'reservation.complete',
@@ -181,7 +181,9 @@ export const reservation = async (req, res, autoRespond = true) => {
       date: parsed.date
     };
 
-    return autoRespond ? res.status(201).json(payload) : { status: 201, body: payload };
+    // 🧠 If slot was just confirmed or already existed, respond with 201
+    const statusCode = duplicate ? 200 : 201;
+    return autoRespond ? res.status(statusCode).json(payload) : { status: statusCode, body: payload };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
     const error = {
