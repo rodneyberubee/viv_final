@@ -46,7 +46,6 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
-  // ✅ Prevent infinite loops by skipping reservation object echoes
   const hasStructuredSystemEcho = Array.isArray(vivInput.messages) &&
     vivInput.messages.some(
       m => m.role === 'system' &&
@@ -90,7 +89,8 @@ export const extractFields = async (vivInput, restaurantId) => {
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
-    const match = aiResponse.match(/{.*?}/s);
+    // 🎯 More resilient JSON extraction
+    const match = aiResponse.match(/{[\s\S]+?}/);
     if (!match) {
       console.warn('[extractFields] ℹ️ No JSON detected — treating as freeform assistant response');
       return {
@@ -104,7 +104,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     try {
       parsed = JSON.parse(match[0]);
 
-      // 🔍 Fallback: Try to extract confirmationCode from raw message if missing
       if (
         parsed.type === 'reservation.cancel' &&
         !parsed.confirmationCode &&
@@ -125,6 +124,7 @@ export const extractFields = async (vivInput, restaurantId) => {
           raw: aiResponse
         };
       }
+
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return {
