@@ -65,7 +65,7 @@ export const askVivRouter = async (req, res) => {
         console.log('[askVivRouter] 💬 Chat message — no backend logic triggered.');
         return res.status(200).json({
           type: 'chat',
-          response: 'Thanks! Let me know how I can assist.',
+          user: messages[messages.length - 1]?.content || '',
           passthrough: true
         });
 
