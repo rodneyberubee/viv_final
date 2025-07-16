@@ -125,13 +125,14 @@ export const changeReservation = async (req) => {
         status: 409,
         body: {
           type: 'reservation.error',
-          error: isBlocked ? 'time_blocked' : 'full',
-          alternatives,
-          date: normalizedDate,
-          timeSlot: normalizedTime
+          parsed: {
+            suggestions: alternatives,
+            date: normalizedDate,
+            timeSlot: normalizedTime
+          }
         }
       };
-    }
+
 
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
