@@ -124,15 +124,14 @@ export const changeReservation = async (req) => {
       return {
         status: 409,
         body: {
-          type: 'reservation.error',
-          parsed: {
-            suggestions: alternatives,
-            date: normalizedDate,
-            timeSlot: normalizedTime
-          }
+          type: 'reservation.unavailable',
+          error: isBlocked ? 'blocked' : 'full',
+          alternatives,
+          date: normalizedDate,
+          timeSlot: normalizedTime
         }
       };
-    } // ← This closing brace was missing in your version
+    }
 
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
@@ -149,6 +148,7 @@ export const changeReservation = async (req) => {
         newTimeSlot: normalizedTime
       }
     };
+
   } catch (err) {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
     return {
