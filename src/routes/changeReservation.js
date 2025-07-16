@@ -125,7 +125,6 @@ export const changeReservation = async (req) => {
         status: 409,
         body: {
           type: 'reservation.unavailable',
-          error: isBlocked ? 'blocked' : 'full',
           alternatives,
           date: normalizedDate,
           timeSlot: normalizedTime
