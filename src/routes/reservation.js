@@ -146,11 +146,13 @@ export const reservation = async (req) => {
     if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
       const payload = {
         type: 'reservation.error',
-        error: blocked.length > 0 ? 'time_blocked' : 'slot_full',
-        alternatives: findNextAvailableSlots(reservationTime)
+        parsed: {
+          suggestions: findNextAvailableSlots(reservationTime)
+        }
       };
       return { status: 409, body: payload };
     }
+
 
     const { confirmationCode } = await createReservation(parsed, config);
 
