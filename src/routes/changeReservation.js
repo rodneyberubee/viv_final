@@ -132,7 +132,7 @@ export const changeReservation = async (req) => {
           }
         }
       };
-
+    } // ← This closing brace was missing in your version
 
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
@@ -149,7 +149,6 @@ export const changeReservation = async (req) => {
         newTimeSlot: normalizedTime
       }
     };
-
   } catch (err) {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
     return {
