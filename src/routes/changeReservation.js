@@ -1,6 +1,7 @@
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
+import { normalizeDateTime } from '../utils/normalizeDate.js';
 
 export const changeReservation = async (req) => {
   console.log('[DEBUG][changeReservation] Route hit');
@@ -43,8 +44,8 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const config = await loadRestaurantConfig(restaurantId);
-  if (!config) {
+  const restaurantMap = await loadRestaurantConfig(restaurantId);
+  if (!restaurantMap) {
     console.error('[ERROR][changeReservation] Config not found for:', restaurantId);
     return {
       status: 404,
@@ -55,13 +56,13 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations } = config;
-  console.log('[DEBUG][changeReservation] Loaded config:', config);
+  const { base_id, table_name, max_reservations, timezone } = restaurantMap;
+  console.log('[DEBUG][changeReservation] Loaded config:', restaurantMap);
 
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
 
   try {
-    const match = await airtable(tableName)
+    const match = await airtable(table_name)
       .select({
         filterByFormula: `{rawConfirmationCode} = '${normalizedCode}'`,
       })
@@ -78,7 +79,7 @@ export const changeReservation = async (req) => {
       };
     }
 
-    const allForDate = await airtable(tableName)
+    const allForDate = await airtable(table_name)
       .select({
         filterByFormula: `{dateFormatted} = '${normalizedDate}'`,
       })
@@ -88,8 +89,17 @@ export const changeReservation = async (req) => {
     const isBlocked = sameSlot.some(r => r.fields.status?.toLowerCase() === 'blocked');
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
-    if (isBlocked || confirmedCount >= maxReservations) {
-      const centerTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+    if (isBlocked || confirmedCount >= max_reservations) {
+      const centerTime = normalizeDateTime(normalizedDate, normalizedTime, timezone);
+      if (!centerTime) {
+        return {
+          status: 400,
+          body: {
+            type: 'reservation.change.error',
+            error: 'invalid_datetime_format'
+          }
+        };
+      }
 
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
@@ -99,7 +109,7 @@ export const changeReservation = async (req) => {
           const entries = allForDate.filter(r => r.fields.timeSlot?.trim() === timeStr);
           const blocked = entries.some(r => r.fields.status?.toLowerCase() === 'blocked');
           const confirmed = entries.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
-          return !blocked && confirmed < maxReservations;
+          return !blocked && confirmed < max_reservations;
         };
 
         let forward = target.clone();
@@ -130,7 +140,7 @@ export const changeReservation = async (req) => {
           type: 'reservation.unavailable',
           available: false,
           reason: isBlocked ? 'blocked' : 'full',
-          remaining: Math.max(0, maxReservations - confirmedCount),
+          remaining: Math.max(0, max_reservations - confirmedCount),
           date: normalizedDate,
           timeSlot: normalizedTime,
           alternatives
@@ -138,7 +148,7 @@ export const changeReservation = async (req) => {
       };
     }
 
-    await airtable(tableName).update(match[0].id, {
+    await airtable(table_name).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
     });
