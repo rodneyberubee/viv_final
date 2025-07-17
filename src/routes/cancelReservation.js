@@ -21,8 +21,8 @@ export const cancelReservation = async (req) => {
     };
   }
 
-  const config = await loadRestaurantConfig(restaurantId);
-  if (!config) {
+  const restaurantMap = await loadRestaurantConfig(restaurantId);
+  if (!restaurantMap) {
     console.error('[ERROR] No config found for restaurantId:', restaurantId);
     return {
       status: 404,
@@ -33,16 +33,16 @@ export const cancelReservation = async (req) => {
     };
   }
 
-  const { baseId, tableName } = config;
-  console.log('[DEBUG] Loaded config:', config);
+  const { base_id, table_name } = restaurantMap;
+  console.log('[DEBUG] Loaded config:', restaurantMap);
 
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
 
   try {
     const formula = `{rawConfirmationCode} = '${confirmationCode}'`;
     console.log('[DEBUG] Airtable filter formula:', formula);
 
-    const records = await airtable(tableName)
+    const records = await airtable(table_name)
       .select({
         filterByFormula: formula,
         fields: ['name', 'date', 'timeSlot', 'status']
@@ -65,13 +65,13 @@ export const cancelReservation = async (req) => {
     const reservation = records[0];
     console.log('[DEBUG] Reservation details:', reservation.fields);
 
-    await airtable(tableName).destroy(reservation.id);
+    await airtable(table_name).destroy(reservation.id);
     console.log('[DEBUG] Deleted record ID:', reservation.id);
 
     return {
       status: 200,
       body: {
-        type: 'reservation.cancelled', // ✅ Standardized type
+        type: 'reservation.cancelled',
         confirmationCode,
         canceledReservation: {
           name: reservation.fields.name,
