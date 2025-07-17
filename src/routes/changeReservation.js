@@ -92,9 +92,8 @@ export const changeReservation = async (req) => {
       const centerTime = dayjs(`${normalizedDate}T${normalizedTime}`);
 
       const findNextAvailableSlots = (target, maxSteps = 96) => {
-        const results = new Set();
-        let forward = target.clone();
-        let backward = target.clone();
+        let before = null;
+        let after = null;
 
         const isAvailable = (timeStr) => {
           const entries = allForDate.filter(r => r.fields.timeSlot?.trim() === timeStr);
@@ -103,20 +102,24 @@ export const changeReservation = async (req) => {
           return !blocked && confirmed < maxReservations;
         };
 
+        let forward = target.clone();
+        let backward = target.clone();
+
         for (let i = 1; i <= maxSteps; i++) {
           forward = forward.add(15, 'minute');
+          if (!after && isAvailable(forward.format('HH:mm'))) {
+            after = forward.format('HH:mm');
+          }
+
           backward = backward.subtract(15, 'minute');
+          if (!before && isAvailable(backward.format('HH:mm'))) {
+            before = backward.format('HH:mm');
+          }
 
-          const forwardStr = forward.format('HH:mm');
-          const backwardStr = backward.format('HH:mm');
-
-          if (isAvailable(forwardStr)) results.add(forwardStr);
-          if (isAvailable(backwardStr)) results.add(backwardStr);
-
-          if (results.size >= 2) break;
+          if (before && after) break;
         }
 
-        return Array.from(results);
+        return { before, after };
       };
 
       const alternatives = findNextAvailableSlots(centerTime);
@@ -125,9 +128,12 @@ export const changeReservation = async (req) => {
         status: 409,
         body: {
           type: 'reservation.unavailable',
-          alternatives,
+          available: false,
+          reason: isBlocked ? 'blocked' : 'full',
+          remaining: Math.max(0, maxReservations - confirmedCount),
           date: normalizedDate,
-          timeSlot: normalizedTime
+          timeSlot: normalizedTime,
+          alternatives
         }
       };
     }
