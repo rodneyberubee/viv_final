@@ -120,14 +120,16 @@ export const reservation = async (req) => {
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
-      const results = [];
+      let before = null;
+      let after = null;
+
       let forward = centerTime;
       let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.add(15, 'minute');
         if (isSlotAvailable(forward.format('HH:mm'))) {
-          results.push(forward.format('HH:mm'));
+          after = forward.format('HH:mm');
           break;
         }
       }
@@ -135,19 +137,27 @@ export const reservation = async (req) => {
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.subtract(15, 'minute');
         if (isSlotAvailable(backward.format('HH:mm'))) {
-          results.push(backward.format('HH:mm'));
+          before = backward.format('HH:mm');
           break;
         }
       }
 
-      return [...new Set(results)];
+      return { before, after };
     };
 
     if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
+      const alternatives = findNextAvailableSlots(reservationTime);
+
       const payload = {
         type: 'reservation.unavailable',
-        alternatives: findNextAvailableSlots(reservationTime)
+        available: false,
+        reason: 'full',
+        remaining: 0,
+        date,
+        timeSlot,
+        alternatives
       };
+
       return { status: 409, body: payload };
     }
 
