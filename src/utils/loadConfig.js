@@ -38,9 +38,7 @@ export async function loadRestaurantConfig(restaurantId) {
       baseId: record.fields.baseId,
       tableName: record.fields.tableName,
       maxReservations: record.fields.maxReservations || 10,
-      futureCutoff: record.fields.futureCutoff || 30,
-      timezone: record.fields.timezone || 'America/Los_Angeles', // fallback for now
-      calibratedTime: record.fields.calibratedTime || null // new DST-aware timestamp field
+      futureCutoff: record.fields.futureCutoff || 30
     };
 
     console.log('[DEBUG] Final config object:', config);
