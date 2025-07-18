@@ -1,4 +1,5 @@
 import Airtable from 'airtable';
+import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 
 export const cancelReservation = async (req) => {
@@ -33,8 +34,11 @@ export const cancelReservation = async (req) => {
     };
   }
 
-  const { base_id, table_name } = restaurantMap;
+  const { base_id, table_name, calibratedTime } = restaurantMap;
+  const now = dayjs(calibratedTime); // ⏱️ Calibrated time available for future checks
+
   console.log('[DEBUG] Loaded config:', restaurantMap);
+  console.log('[DEBUG] Localized now (calibratedTime):', now.toISOString());
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
 
