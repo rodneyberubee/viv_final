@@ -91,11 +91,7 @@ export const reservation = async (req) => {
     }
 
     if (reservationTime.isBefore(now)) {
-      const error = {
-        type: 'reservation.error',
-        error: 'time_already_passed'
-      };
-      return { status: 400, body: error };
+      console.warn('[WARN] Reservation time is in the past, proceeding anyway (guard disabled)');
     }
 
     const normalizedDate = date.trim();
