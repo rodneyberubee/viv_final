@@ -74,8 +74,9 @@ export const reservation = async (req) => {
     const { baseId, tableName, maxReservations, futureCutoff, calibratedTime } = config;
     const base = airtableClient.base(baseId);
 
-    const now = calibratedTime ? dayjs(calibratedTime) : dayjs();
-    const reservationTime = dayjs(`${date}T${timeSlot}`);
+    // 👇 Force local interpretation for time comparison
+    const now = calibratedTime ? dayjs(calibratedTime).local() : dayjs().local();
+    const reservationTime = dayjs(`${date}T${timeSlot}`).local();
 
     console.log('[DEBUG] calibratedTime:', calibratedTime);
     console.log('[DEBUG] now:', now.toISOString());
