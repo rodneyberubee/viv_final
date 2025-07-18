@@ -34,7 +34,7 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const { base_id, table_name, max_reservations, timezone } = restaurantMap;
+  const { base_id, table_name, max_reservations, timezone, calibratedTime } = restaurantMap;
   console.log('[DEBUG] Loaded restaurantMap:', restaurantMap);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
@@ -101,13 +101,25 @@ export const checkAvailability = async (req) => {
     const remaining = max_reservations - confirmedCount;
 
     if (isBlocked || remaining <= 0) {
+      const now = dayjs(calibratedTime); // ✅ use calibrated time
       const centerTime = normalizeDateTime(date, timeSlot, timezone);
+
       if (!centerTime) {
         return {
           status: 400,
           body: {
             type: 'availability.check.error',
             error: 'invalid_datetime_format'
+          }
+        };
+      }
+
+      if (centerTime.isBefore(now)) {
+        return {
+          status: 400,
+          body: {
+            type: 'availability.check.error',
+            error: 'time_already_passed'
           }
         };
       }
