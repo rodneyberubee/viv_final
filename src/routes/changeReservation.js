@@ -56,7 +56,7 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { base_id, table_name, max_reservations, timezone } = restaurantMap;
+  const { base_id, table_name, max_reservations, timezone, calibratedTime } = restaurantMap;
   console.log('[DEBUG][changeReservation] Loaded config:', restaurantMap);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
@@ -89,18 +89,30 @@ export const changeReservation = async (req) => {
     const isBlocked = sameSlot.some(r => r.fields.status?.toLowerCase() === 'blocked');
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
-    if (isBlocked || confirmedCount >= max_reservations) {
-      const centerTime = normalizeDateTime(normalizedDate, normalizedTime, timezone);
-      if (!centerTime) {
-        return {
-          status: 400,
-          body: {
-            type: 'reservation.change.error',
-            error: 'invalid_datetime_format'
-          }
-        };
-      }
+    const now = dayjs(calibratedTime); // ✅ Use calibrated local time snapshot
+    const reservationTime = normalizeDateTime(normalizedDate, normalizedTime, timezone);
 
+    if (!reservationTime) {
+      return {
+        status: 400,
+        body: {
+          type: 'reservation.change.error',
+          error: 'invalid_datetime_format'
+        }
+      };
+    }
+
+    if (reservationTime.isBefore(now)) {
+      return {
+        status: 400,
+        body: {
+          type: 'reservation.change.error',
+          error: 'time_already_passed'
+        }
+      };
+    }
+
+    if (isBlocked || confirmedCount >= max_reservations) {
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
         let after = null;
@@ -132,7 +144,7 @@ export const changeReservation = async (req) => {
         return { before, after };
       };
 
-      const alternatives = findNextAvailableSlots(centerTime);
+      const alternatives = findNextAvailableSlots(reservationTime);
 
       return {
         status: 409,
