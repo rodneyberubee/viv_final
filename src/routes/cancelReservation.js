@@ -63,6 +63,8 @@ export const cancelReservation = async (req) => {
     }
 
     const reservation = records[0];
+    const { name, date, timeSlot } = reservation.fields;
+
     console.log('[DEBUG] Reservation details:', reservation.fields);
 
     await airtable(tableName).destroy(reservation.id);
@@ -71,15 +73,12 @@ export const cancelReservation = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'reservation.cancelled', // ✅ Standardized type
+        type: 'reservation.cancelled',
         confirmationCode,
-        canceledReservation: {
-          name: reservation.fields.name,
-          date: reservation.fields.date,
-          timeSlot: reservation.fields.timeSlot
-        }
+        canceledReservation: { name, date, timeSlot }
       }
     };
+
   } catch (err) {
     console.error('[ERROR][cancelReservation]', err);
     return {
