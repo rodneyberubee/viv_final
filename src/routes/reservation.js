@@ -81,6 +81,7 @@ export const reservation = async (req) => {
 
     const now = dayjs();
     const reservationTime = dayjs(`${date}T${timeSlot}`);
+    let warningNote = null;
 
     if (reservationTime.isAfter(now.add(futureCutoff, 'day'))) {
       const error = {
@@ -92,6 +93,7 @@ export const reservation = async (req) => {
 
     if (reservationTime.isBefore(now)) {
       console.warn('[WARN] Reservation time is in the past, proceeding anyway (guard disabled)');
+      warningNote = 'This reservation appears to be in the past based on the restaurant\'s clock. If this was unintentional, feel free to modify it.';
     }
 
     const normalizedDate = date.trim();
@@ -165,7 +167,8 @@ export const reservation = async (req) => {
       name: parsed.name,
       partySize: parsed.partySize,
       timeSlot: parsed.timeSlot,
-      date: parsed.date
+      date: parsed.date,
+      ...(warningNote && { note: warningNote })
     };
 
     return { status: 201, body: payload };
