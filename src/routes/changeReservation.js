@@ -1,7 +1,6 @@
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
-import { normalizeDateTime } from '../utils/normalizeDate.js';
 
 export const changeReservation = async (req) => {
   console.log('[DEBUG][changeReservation] Route hit');
@@ -44,8 +43,8 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const restaurantMap = await loadRestaurantConfig(restaurantId);
-  if (!restaurantMap) {
+  const config = await loadRestaurantConfig(restaurantId);
+  if (!config) {
     console.error('[ERROR][changeReservation] Config not found for:', restaurantId);
     return {
       status: 404,
@@ -56,13 +55,13 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { base_id, table_name, max_reservations, timezone, calibratedTime } = restaurantMap;
-  console.log('[DEBUG][changeReservation] Loaded config:', restaurantMap);
+  const { baseId, tableName, maxReservations } = config;
+  console.log('[DEBUG][changeReservation] Loaded config:', config);
 
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    const match = await airtable(table_name)
+    const match = await airtable(tableName)
       .select({
         filterByFormula: `{rawConfirmationCode} = '${normalizedCode}'`,
       })
@@ -79,7 +78,7 @@ export const changeReservation = async (req) => {
       };
     }
 
-    const allForDate = await airtable(table_name)
+    const allForDate = await airtable(tableName)
       .select({
         filterByFormula: `{dateFormatted} = '${normalizedDate}'`,
       })
@@ -89,30 +88,9 @@ export const changeReservation = async (req) => {
     const isBlocked = sameSlot.some(r => r.fields.status?.toLowerCase() === 'blocked');
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
-    const now = dayjs(calibratedTime); // ✅ Use calibrated local time snapshot
-    const reservationTime = normalizeDateTime(normalizedDate, normalizedTime, timezone);
+    if (isBlocked || confirmedCount >= maxReservations) {
+      const centerTime = dayjs(`${normalizedDate}T${normalizedTime}`);
 
-    if (!reservationTime) {
-      return {
-        status: 400,
-        body: {
-          type: 'reservation.change.error',
-          error: 'invalid_datetime_format'
-        }
-      };
-    }
-
-    if (reservationTime.isBefore(now)) {
-      return {
-        status: 400,
-        body: {
-          type: 'reservation.change.error',
-          error: 'time_already_passed'
-        }
-      };
-    }
-
-    if (isBlocked || confirmedCount >= max_reservations) {
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
         let after = null;
@@ -121,7 +99,7 @@ export const changeReservation = async (req) => {
           const entries = allForDate.filter(r => r.fields.timeSlot?.trim() === timeStr);
           const blocked = entries.some(r => r.fields.status?.toLowerCase() === 'blocked');
           const confirmed = entries.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
-          return !blocked && confirmed < max_reservations;
+          return !blocked && confirmed < maxReservations;
         };
 
         let forward = target.clone();
@@ -144,7 +122,7 @@ export const changeReservation = async (req) => {
         return { before, after };
       };
 
-      const alternatives = findNextAvailableSlots(reservationTime);
+      const alternatives = findNextAvailableSlots(centerTime);
 
       return {
         status: 409,
@@ -152,7 +130,7 @@ export const changeReservation = async (req) => {
           type: 'reservation.unavailable',
           available: false,
           reason: isBlocked ? 'blocked' : 'full',
-          remaining: Math.max(0, max_reservations - confirmedCount),
+          remaining: Math.max(0, maxReservations - confirmedCount),
           date: normalizedDate,
           timeSlot: normalizedTime,
           alternatives
@@ -160,7 +138,7 @@ export const changeReservation = async (req) => {
       };
     }
 
-    await airtable(table_name).update(match[0].id, {
+    await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
     });
