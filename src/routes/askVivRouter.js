@@ -24,19 +24,11 @@ export const askVivRouter = async (req, res) => {
     messages = req.body.messages;
     console.log('[askVivRouter] 📥 Using messages[] input for GPT parsing');
   } else if (req.body.userMessage) {
-    messages = [
-      {
-        role: 'user',
-        content:
-          typeof req.body.userMessage === 'string'
-            ? req.body.userMessage
-            : req.body.userMessage.text
-      }
-    ];
+    messages = [{ role: 'user', content: typeof req.body.userMessage === 'string' ? req.body.userMessage : req.body.userMessage.text }];
     console.log('[askVivRouter] 🧾 Converted userMessage to messages[]:', messages);
   }
 
-  // Run GPT extraction if messages exist
+  // If we now have messages, run GPT extraction
   if (messages.length > 0) {
     const aiParsed = await extractFields({ messages }, restaurantId);
     console.log('[askVivRouter] 🔍 AI Parsed Response:', aiParsed);
@@ -74,16 +66,6 @@ export const askVivRouter = async (req, res) => {
         return res.status(200).json({
           type: 'chat',
           user: messages[messages.length - 1]?.content || '',
-          passthrough: true
-        });
-
-      case 'followup':
-        console.log('[askVivRouter] 🔁 Routing type: followup');
-        return res.status(200).json({
-          type: 'followup',
-          spokenResponse:
-            parsed.prompt || 'Just to help me out — could you confirm a few more details?',
-          missing: parsed.missing || [],
           passthrough: true
         });
 
