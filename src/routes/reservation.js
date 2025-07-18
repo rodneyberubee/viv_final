@@ -38,11 +38,10 @@ export const reservation = async (req) => {
       const fallback = JSON.parse(parsed.userMessage);
       parsed = { ...fallback, restaurantId: parsed.restaurantId, route: parsed.route };
     } catch (e) {
-      const error = {
-        type: 'reservation.error',
-        error: 'invalid_json_in_userMessage'
+      return {
+        status: 400,
+        body: { type: 'reservation.error', error: 'invalid_json_in_userMessage' }
       };
-      return { status: 400, body: error };
     }
   }
 
@@ -56,46 +55,41 @@ export const reservation = async (req) => {
   if (!timeSlot) missing.push('timeSlot');
 
   if (missing.length > 0) {
-    const error = {
-      type: 'reservation.error',
-      error: 'missing_required_fields',
-      missing
-    };
     console.warn('[DEBUG] Missing required field(s):', missing);
-    return { status: 400, body: error };
+    return {
+      status: 400,
+      body: { type: 'reservation.error', error: 'missing_required_fields', missing }
+    };
   }
 
   try {
     const config = await loadRestaurantConfig(restaurantId);
     if (!config) {
-      const error = {
-        type: 'reservation.error',
-        error: 'config_not_found'
+      return {
+        status: 404,
+        body: { type: 'reservation.error', error: 'config_not_found' }
       };
-      console.error('[DEBUG] No config found for restaurantId:', restaurantId);
-      return { status: 404, body: error };
     }
 
-    const { baseId, tableName, maxReservations, futureCutoff } = config;
+    const { baseId, tableName, maxReservations, futureCutoff, calibratedTime } = config;
     const base = airtableClient.base(baseId);
 
-    const now = dayjs();
+    // Use calibratedTime for local time reference
+    const now = calibratedTime ? dayjs(calibratedTime) : dayjs();
     const reservationTime = dayjs(`${date}T${timeSlot}`);
 
     if (reservationTime.isAfter(now.add(futureCutoff, 'day'))) {
-      const error = {
-        type: 'reservation.error',
-        error: 'outside_reservation_window'
+      return {
+        status: 400,
+        body: { type: 'reservation.error', error: 'outside_reservation_window' }
       };
-      return { status: 400, body: error };
     }
 
     if (reservationTime.isBefore(now)) {
-      const error = {
-        type: 'reservation.error',
-        error: 'time_already_passed'
+      return {
+        status: 400,
+        body: { type: 'reservation.error', error: 'time_already_passed' }
       };
-      return { status: 400, body: error };
     }
 
     const normalizedDate = date.trim();
@@ -148,37 +142,38 @@ export const reservation = async (req) => {
     if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime);
 
-      const payload = {
-        type: 'reservation.unavailable',
-        available: false,
-        reason: 'full',
-        remaining: 0,
-        date,
-        timeSlot,
-        alternatives
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'full',
+          remaining: 0,
+          date,
+          timeSlot,
+          alternatives
+        }
       };
-
-      return { status: 409, body: payload };
     }
 
     const { confirmationCode } = await createReservation(parsed, config);
 
-    const payload = {
-      type: 'reservation.complete',
-      confirmationCode,
-      name: parsed.name,
-      partySize: parsed.partySize,
-      timeSlot: parsed.timeSlot,
-      date: parsed.date
+    return {
+      status: 201,
+      body: {
+        type: 'reservation.complete',
+        confirmationCode,
+        name: parsed.name,
+        partySize: parsed.partySize,
+        timeSlot: parsed.timeSlot,
+        date: parsed.date
+      }
     };
-
-    return { status: 201, body: payload };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
-    const error = {
-      type: 'reservation.error',
-      error: 'internal_server_error'
+    return {
+      status: 500,
+      body: { type: 'reservation.error', error: 'internal_server_error' }
     };
-    return { status: 500, body: error };
   }
 };
