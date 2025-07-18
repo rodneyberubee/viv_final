@@ -55,7 +55,7 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations } = config;
+  const { baseId, tableName, maxReservations, calibratedTime } = config;
   console.log('[DEBUG][changeReservation] Loaded config:', config);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
@@ -78,6 +78,20 @@ export const changeReservation = async (req) => {
       };
     }
 
+    // Reject changes to past times
+    const now = calibratedTime ? dayjs(calibratedTime) : dayjs();
+    const requestedTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+    if (requestedTime.isBefore(now)) {
+      console.warn('[WARN][changeReservation] Requested time is in the past');
+      return {
+        status: 400,
+        body: {
+          type: 'reservation.change.error',
+          error: 'time_already_passed'
+        }
+      };
+    }
+
     const allForDate = await airtable(tableName)
       .select({
         filterByFormula: `{dateFormatted} = '${normalizedDate}'`,
@@ -89,7 +103,7 @@ export const changeReservation = async (req) => {
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (isBlocked || confirmedCount >= maxReservations) {
-      const centerTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+      const centerTime = requestedTime;
 
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
