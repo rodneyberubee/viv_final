@@ -69,6 +69,13 @@ export const askVivRouter = async (req, res) => {
           passthrough: true
         });
 
+      case 'followup':
+        console.log('[askVivRouter] 🔁 Routing type: followup');
+        return res.status(200).json({
+          type: 'followup',
+          spokenResponse: parsed.prompt || 'Just to help me out — could you confirm a few more details?'
+        });
+
       case 'reservation.complete':
         console.log('[askVivRouter] 📤 Routing to reservation.js');
         const result = await reservation(newReq);
