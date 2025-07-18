@@ -1,7 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
-import { normalizeDateTime } from '../utils/normalizeDate.js';
 
 export const checkAvailability = async (req) => {
   console.log('[DEBUG] checkAvailability called');
@@ -22,8 +21,8 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const restaurantMap = await loadRestaurantConfig(restaurantId);
-  if (!restaurantMap) {
+  const config = await loadRestaurantConfig(restaurantId);
+  if (!config) {
     console.error('[ERROR] Restaurant config not found for:', restaurantId);
     return {
       status: 404,
@@ -34,17 +33,17 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const { base_id, table_name, max_reservations, timezone, calibratedTime } = restaurantMap;
-  console.log('[DEBUG] Loaded restaurantMap:', restaurantMap);
+  const { baseId, tableName, maxReservations } = config;
+  console.log('[DEBUG] Loaded config:', config);
 
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
     const formula = `{dateFormatted} = '${normalizedDate}'`;
 
-    const allReservations = await airtable(table_name)
+    const allReservations = await airtable(tableName)
       .select({ filterByFormula: formula })
       .all();
 
@@ -54,13 +53,13 @@ export const checkAvailability = async (req) => {
       const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time);
       const isBlocked = matching.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
       const confirmedCount = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed').length;
-      return !isBlocked && confirmedCount < max_reservations;
+      return !isBlocked && confirmedCount < maxReservations;
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       const results = { before: null, after: null };
-      let forward = centerTime.clone();
-      let backward = centerTime.clone();
+      let forward = centerTime;
+      let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.add(15, 'minute');
@@ -98,38 +97,16 @@ export const checkAvailability = async (req) => {
       return status === 'confirmed';
     }).length;
 
-    const remaining = max_reservations - confirmedCount;
+    const remaining = maxReservations - confirmedCount;
 
     if (isBlocked || remaining <= 0) {
-      const now = dayjs(calibratedTime); // ✅ use calibrated time
-      const centerTime = normalizeDateTime(date, timeSlot, timezone);
-
-      if (!centerTime) {
-        return {
-          status: 400,
-          body: {
-            type: 'availability.check.error',
-            error: 'invalid_datetime_format'
-          }
-        };
-      }
-
-      if (centerTime.isBefore(now)) {
-        return {
-          status: 400,
-          body: {
-            type: 'availability.check.error',
-            error: 'time_already_passed'
-          }
-        };
-      }
-
-      const alternatives = findNextAvailableSlots(centerTime, 96);
+      const currentTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+      const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
         status: 200,
         body: {
-          type: 'availability.unavailable',
+          type: 'availability.unavailable', // ✅ Standardized
           available: false,
           reason: isBlocked ? 'blocked' : 'full',
           date: normalizedDate,
@@ -143,7 +120,7 @@ export const checkAvailability = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'availability.available',
+        type: 'availability.available', // ✅ Standardized
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
