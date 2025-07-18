@@ -33,7 +33,7 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations } = config;
+  const { baseId, tableName, maxReservations, calibratedTime } = config;
   console.log('[DEBUG] Loaded config:', config);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
@@ -58,8 +58,8 @@ export const checkAvailability = async (req) => {
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       const results = { before: null, after: null };
-      let forward = centerTime;
-      let backward = centerTime;
+      let forward = centerTime.clone();
+      let backward = centerTime.clone();
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.add(15, 'minute');
@@ -99,16 +99,19 @@ export const checkAvailability = async (req) => {
 
     const remaining = maxReservations - confirmedCount;
 
-    if (isBlocked || remaining <= 0) {
-      const currentTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+    // Use calibrated time for accurate reference
+    const now = calibratedTime ? dayjs(calibratedTime) : dayjs();
+    const currentTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+
+    if (isBlocked || remaining <= 0 || currentTime.isBefore(now)) {
       const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
         status: 200,
         body: {
-          type: 'availability.unavailable', // ✅ Standardized
+          type: 'availability.unavailable',
           available: false,
-          reason: isBlocked ? 'blocked' : 'full',
+          reason: isBlocked ? 'blocked' : (currentTime.isBefore(now) ? 'time_passed' : 'full'),
           date: normalizedDate,
           timeSlot: normalizedTime,
           alternatives,
@@ -120,7 +123,7 @@ export const checkAvailability = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'availability.available', // ✅ Standardized
+        type: 'availability.available',
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
