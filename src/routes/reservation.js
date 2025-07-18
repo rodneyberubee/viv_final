@@ -82,11 +82,12 @@ export const reservation = async (req) => {
       table_name,
       max_reservations,
       future_cutoff,
-      timezone
+      timezone,
+      calibratedTime
     } = restaurantMap;
 
     const base = airtableClient.base(base_id);
-    const now = dayjs().utc();
+    const now = dayjs(calibratedTime); // ✅ Use calibrated time from Airtable
 
     const reservationTime = normalizeDateTime(date, timeSlot, timezone);
     if (!reservationTime) {
