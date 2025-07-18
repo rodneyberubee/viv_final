@@ -16,22 +16,21 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Never speak before the JSON. Use natural language only after the backend has responded.',
     'Always use one of the following values for `type`: "reservation.complete", "reservation.cancel", "reservation.change", "availability.check".',
     '',
+    'If required information is missing for the selected type, return:',
+    '{ "type": "followup", "missing": ["name", "contactInfo"], "prompt": "Thanks! Can you also tell me your name and a way to contact you?" }',
+    '',
     'Examples:',
     '1. Reservation:',
     '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
-    '(Then confirm the booking naturally in your own words)',
     '',
     '2. Cancellation:',
     '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
-    '(Then confirm the cancellation in your own words)',
     '',
     '3. Change:',
     '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
-    '(Then confirm the change naturally in your own words)',
     '',
     '4. Availability:',
     '{"type":"availability.check","date":"2025-07-12","timeSlot":"18:30"}',
-    '(Then say you’ll check or report if it’s available)',
     '',
     'Do not repeat these examples. Use your own words freely.'
   ].join('\n');
@@ -60,7 +59,7 @@ export const extractFields = async (vivInput, restaurantId) => {
 
     console.log('[extractFields] 📡 OpenAI response status:', openaiRes.status);
     const json = await openaiRes.json();
-    console.log('[extractFields] 🧾 Full OpenAI JSON:', JSON.stringify(json, null, 2));
+    console.log('[extractFields] 📟 Full OpenAI JSON:', JSON.stringify(json, null, 2));
 
     if (json.error) {
       console.error('[extractFields] ❌ OpenAI API returned error:', json.error);
@@ -83,7 +82,6 @@ export const extractFields = async (vivInput, restaurantId) => {
         return { type: 'chat', parsed: {} };
       }
 
-      // 🔄 Normalize type
       const normalizedType = {
         cancelReservation: 'reservation.cancel',
         reservationCancel: 'reservation.cancel',
@@ -97,17 +95,26 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       parsed.type = normalizedType;
 
-      // 🔍 Validate required fields for reservation.change
-      if (parsed.type === 'reservation.change') {
-        const { confirmationCode, newDate, newTimeSlot } = parsed;
-        if (!confirmationCode || !newDate || !newTimeSlot) {
-          console.warn('[extractFields] ❌ Missing fields for reservation.change:', {
-            confirmationCode,
-            newDate,
-            newTimeSlot
-          });
-          return { type: 'chat', parsed: {} };
-        }
+      const requiredFieldsMap = {
+        'reservation.complete': ['name', 'partySize', 'contactInfo', 'date', 'timeSlot'],
+        'reservation.cancel': ['confirmationCode'],
+        'reservation.change': ['confirmationCode', 'newDate', 'newTimeSlot'],
+        'availability.check': ['date', 'timeSlot']
+      };
+
+      const requiredFields = requiredFieldsMap[parsed.type] || [];
+      const missing = requiredFields.filter(field => !parsed[field]);
+
+      if (missing.length > 0) {
+        console.warn(`[extractFields] ❌ Missing fields for ${parsed.type}:`, missing);
+        return {
+          type: 'followup',
+          parsed: {
+            type: 'followup',
+            missing,
+            prompt: `Thanks! Can you also tell me your ${missing.join(' and ')}?`
+          }
+        };
       }
 
     } catch (e) {
