@@ -1,15 +1,14 @@
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
-import { normalizeDateTime } from '../utils/normalizeDate.js';
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
-export const createReservation = async (parsed, restaurantMap) => {
+export const createReservation = async (parsed, config) => {
   const { name, partySize, contactInfo, date, timeSlot } = parsed;
-  const { base_id, table_name } = restaurantMap;
+  const { baseId, tableName } = config;
 
-  const base = airtableClient.base(base_id);
+  const base = airtableClient.base(baseId);
   const confirmationCode = Math.random().toString(36).substr(2, 9);
 
   const fields = {
@@ -23,7 +22,7 @@ export const createReservation = async (parsed, restaurantMap) => {
   };
 
   console.log('[DEBUG] Writing to Airtable:', fields);
-  await base(table_name).create([{ fields }]);
+  await base(tableName).create([{ fields }]);
   return { confirmationCode };
 };
 
@@ -67,8 +66,8 @@ export const reservation = async (req) => {
   }
 
   try {
-    const restaurantMap = await loadRestaurantConfig(restaurantId);
-    if (!restaurantMap) {
+    const config = await loadRestaurantConfig(restaurantId);
+    if (!config) {
       const error = {
         type: 'reservation.error',
         error: 'config_not_found'
@@ -77,53 +76,32 @@ export const reservation = async (req) => {
       return { status: 404, body: error };
     }
 
-    const {
-      base_id,
-      table_name,
-      max_reservations,
-      future_cutoff,
-      timezone,
-      calibratedTime
-    } = restaurantMap;
+    const { baseId, tableName, maxReservations, futureCutoff } = config;
+    const base = airtableClient.base(baseId);
 
-    const base = airtableClient.base(base_id);
-    const now = dayjs(calibratedTime); // ✅ Use calibrated time from Airtable
+    const now = dayjs();
+    const reservationTime = dayjs(`${date}T${timeSlot}`);
 
-    const reservationTime = normalizeDateTime(date, timeSlot, timezone);
-    if (!reservationTime) {
-      return {
-        status: 400,
-        body: {
-          type: 'reservation.error',
-          error: 'invalid_datetime_format'
-        }
+    if (reservationTime.isAfter(now.add(futureCutoff, 'day'))) {
+      const error = {
+        type: 'reservation.error',
+        error: 'outside_reservation_window'
       };
-    }
-
-    if (reservationTime.isAfter(now.add(future_cutoff, 'day'))) {
-      return {
-        status: 400,
-        body: {
-          type: 'reservation.error',
-          error: 'outside_reservation_window'
-        }
-      };
+      return { status: 400, body: error };
     }
 
     if (reservationTime.isBefore(now)) {
-      return {
-        status: 400,
-        body: {
-          type: 'reservation.error',
-          error: 'time_already_passed'
-        }
+      const error = {
+        type: 'reservation.error',
+        error: 'time_already_passed'
       };
+      return { status: 400, body: error };
     }
 
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
 
-    const reservations = await base(table_name)
+    const reservations = await base(tableName)
       .select({
         filterByFormula: `{dateFormatted} = '${normalizedDate}'`,
         fields: ['status', 'timeSlot']
@@ -138,15 +116,15 @@ export const reservation = async (req) => {
       const matching = reservations.filter(r => r.fields.timeSlot?.trim() === time);
       const isBlocked = matching.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-      return !isBlocked && confirmed.length < max_reservations;
+      return !isBlocked && confirmed.length < maxReservations;
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       let before = null;
       let after = null;
 
-      let forward = centerTime.clone();
-      let backward = centerTime.clone();
+      let forward = centerTime;
+      let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.add(15, 'minute');
@@ -167,7 +145,7 @@ export const reservation = async (req) => {
       return { before, after };
     };
 
-    if (blocked.length > 0 || confirmedCount.length >= max_reservations) {
+    if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime);
 
       const payload = {
@@ -183,7 +161,7 @@ export const reservation = async (req) => {
       return { status: 409, body: payload };
     }
 
-    const { confirmationCode } = await createReservation(parsed, restaurantMap);
+    const { confirmationCode } = await createReservation(parsed, config);
 
     const payload = {
       type: 'reservation.complete',
@@ -197,12 +175,10 @@ export const reservation = async (req) => {
     return { status: 201, body: payload };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
-    return {
-      status: 500,
-      body: {
-        type: 'reservation.error',
-        error: 'internal_server_error'
-      }
+    const error = {
+      type: 'reservation.error',
+      error: 'internal_server_error'
     };
+    return { status: 500, body: error };
   }
 };
