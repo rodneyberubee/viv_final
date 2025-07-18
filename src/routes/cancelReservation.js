@@ -1,5 +1,4 @@
 import Airtable from 'airtable';
-import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 
 export const cancelReservation = async (req) => {
@@ -22,8 +21,8 @@ export const cancelReservation = async (req) => {
     };
   }
 
-  const restaurantMap = await loadRestaurantConfig(restaurantId);
-  if (!restaurantMap) {
+  const config = await loadRestaurantConfig(restaurantId);
+  if (!config) {
     console.error('[ERROR] No config found for restaurantId:', restaurantId);
     return {
       status: 404,
@@ -34,19 +33,16 @@ export const cancelReservation = async (req) => {
     };
   }
 
-  const { base_id, table_name, calibratedTime } = restaurantMap;
-  const now = dayjs(calibratedTime); // ⏱️ Calibrated time available for future checks
+  const { baseId, tableName } = config;
+  console.log('[DEBUG] Loaded config:', config);
 
-  console.log('[DEBUG] Loaded config:', restaurantMap);
-  console.log('[DEBUG] Localized now (calibratedTime):', now.toISOString());
-
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(base_id);
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
     const formula = `{rawConfirmationCode} = '${confirmationCode}'`;
     console.log('[DEBUG] Airtable filter formula:', formula);
 
-    const records = await airtable(table_name)
+    const records = await airtable(tableName)
       .select({
         filterByFormula: formula,
         fields: ['name', 'date', 'timeSlot', 'status']
@@ -69,13 +65,13 @@ export const cancelReservation = async (req) => {
     const reservation = records[0];
     console.log('[DEBUG] Reservation details:', reservation.fields);
 
-    await airtable(table_name).destroy(reservation.id);
+    await airtable(tableName).destroy(reservation.id);
     console.log('[DEBUG] Deleted record ID:', reservation.id);
 
     return {
       status: 200,
       body: {
-        type: 'reservation.cancelled',
+        type: 'reservation.cancelled', // ✅ Standardized type
         confirmationCode,
         canceledReservation: {
           name: reservation.fields.name,
