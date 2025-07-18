@@ -19,7 +19,15 @@ export async function loadRestaurantConfig(restaurantId) {
 
     const records = await base('restaurantMap')
       .select({
-        filterByFormula: formula
+        filterByFormula: formula,
+        fields: [
+          'restaurantId',
+          'baseId',
+          'tableName',
+          'maxReservations',
+          'futureCutoff',
+          'calibratedTime'
+        ]
       })
       .all();
 
@@ -38,7 +46,8 @@ export async function loadRestaurantConfig(restaurantId) {
       baseId: record.fields.baseId,
       tableName: record.fields.tableName,
       maxReservations: record.fields.maxReservations || 10,
-      futureCutoff: record.fields.futureCutoff || 30
+      futureCutoff: record.fields.futureCutoff || 30,
+      calibratedTime: record.fields.calibratedTime || null // <-- Added field
     };
 
     console.log('[DEBUG] Final config object:', config);
