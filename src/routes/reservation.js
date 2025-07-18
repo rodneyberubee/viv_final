@@ -93,7 +93,7 @@ export const reservation = async (req) => {
 
     if (reservationTime.isBefore(now)) {
       console.warn('[WARN] Reservation time is in the past, proceeding anyway (guard disabled)');
-      warningNote = 'This reservation appears to be in the past based on the restaurant\'s clock. If this was unintentional, feel free to modify it.';
+      warningNote = 'There may have been an issue with your info, can you reverify it? If nothing is wrong you can disregard this message';
     }
 
     const normalizedDate = date.trim();
