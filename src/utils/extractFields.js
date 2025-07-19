@@ -15,8 +15,17 @@ const normalizeDate = (rawDate) => {
 
 const normalizeTimeSlot = (rawTime) => {
   if (!rawTime || typeof rawTime !== 'string') return rawTime;
-  const parsed = dayjs(rawTime, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
-  return parsed.isValid() ? parsed.format('HH:mm') : rawTime;
+
+  const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
+  const withSpace = cleaned.replace(/(AM|PM)/, ' $1');
+
+  const parsed = dayjs(withSpace, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
+  if (!parsed.isValid()) {
+    console.warn('[normalizeTimeSlot] ⚠️ Could not parse:', rawTime);
+    return rawTime;
+  }
+
+  return parsed.format('HH:mm');
 };
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -99,7 +108,7 @@ export const extractFields = async (vivInput, restaurantId) => {
         return { type: 'chat', parsed: {} };
       }
 
-      // 🔄 Normalize type based on intent + completeness
+      // 🔄 Normalize fields
       let normalizedType = parsed.type;
 
       if (parsed.parsed) {
@@ -110,13 +119,18 @@ export const extractFields = async (vivInput, restaurantId) => {
           parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
         }
         if (parsed.parsed.timeSlot) {
-          parsed.parsed.timeSlot = normalizeTimeSlot(parsed.parsed.timeSlot);
+          const original = parsed.parsed.timeSlot;
+          parsed.parsed.timeSlot = normalizeTimeSlot(original);
+          console.log('[normalizeTimeSlot] 🕓 Normalized timeSlot:', original, '→', parsed.parsed.timeSlot);
         }
         if (parsed.parsed.newTimeSlot) {
-          parsed.parsed.newTimeSlot = normalizeTimeSlot(parsed.parsed.newTimeSlot);
+          const original = parsed.parsed.newTimeSlot;
+          parsed.parsed.newTimeSlot = normalizeTimeSlot(original);
+          console.log('[normalizeTimeSlot] 🕓 Normalized newTimeSlot:', original, '→', parsed.parsed.newTimeSlot);
         }
       }
 
+      // 🧠 Final intent/type handling
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
