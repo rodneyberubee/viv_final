@@ -1,6 +1,17 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+dayjs.extend(customParseFormat);
+
 dotenv.config();
+
+const normalizeDate = (rawDate) => {
+  if (!rawDate || typeof rawDate !== 'string') return rawDate;
+  const formats = ['YYYY-MM-DD', 'D MMMM', 'MMMM D', 'D MMM', 'MMM D'];
+  const parsed = dayjs(rawDate, formats, true);
+  return parsed.isValid() ? parsed.year(2025).format('YYYY-MM-DD') : rawDate;
+};
 
 export const extractFields = async (vivInput, restaurantId) => {
   const start = Date.now();
@@ -73,6 +84,15 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       // 🔄 Normalize type based on intent + completeness
       let normalizedType = parsed.type;
+
+      if (parsed.parsed) {
+        if (parsed.parsed.date) {
+          parsed.parsed.date = normalizeDate(parsed.parsed.date);
+        }
+        if (parsed.parsed.newDate) {
+          parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
+        }
+      }
 
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
