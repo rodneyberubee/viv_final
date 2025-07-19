@@ -39,11 +39,13 @@ export const askVivRouter = async (req, res) => {
 
     parsed = {
       ...aiParsed.parsed,
-      type: aiParsed.type
+      type: aiParsed.type,
+      intent: aiParsed.intent || null
     };
   } else if (req.body.type && req.body.parsed) {
     parsed = req.body.parsed;
     parsed.type = req.body.type;
+    parsed.intent = req.body.intent || null;
     console.log('[askVivRouter] 🔁 Structured request received:', parsed);
   } else {
     console.warn('[askVivRouter] ⚠️ No usable input detected. Body:', req.body);
@@ -60,6 +62,16 @@ export const askVivRouter = async (req, res) => {
   console.log('[askVivRouter] 📦 Payload to next route:', parsed);
 
   try {
+    // Handle incomplete types — send back to VivA
+    if (parsed.type.endsWith('.incomplete')) {
+      console.log('[askVivRouter] ⏳ Incomplete input — returning to VivA for clarification.');
+      return res.status(200).json({
+        type: parsed.type,
+        intent: parsed.intent,
+        parsed
+      });
+    }
+
     switch (parsed.type) {
       case 'chat':
         console.log('[askVivRouter] 💬 Chat message — no backend logic triggered.');
