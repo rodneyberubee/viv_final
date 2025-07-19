@@ -32,7 +32,15 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- Always return "intent", "type", and "parsed"',
     '- If any required fields are missing, set them to null',
     '- For incomplete data, use types like "reservation.incomplete", "reservation.change.incomplete"',
-    '- Never speak before or after the JSON block'
+    '- Never speak before or after the JSON block.',
+    '',
+    'Confirmation Code Rules:',
+    '- confirmationCode is a short string used to identify an existing reservation.',
+    '- Typical format: lowercase letters and/or numbers (e.g., "abc123", "5e4wotk2r", "38f02zn")',
+    '- confirmationCodes are 6–10 characters and are never a time like "6:30 PM".',
+    '- Users might say: "My code is abc123", "Cancel reservation 9x7vwp", "Change 5e4wotk2r to 7 PM".',
+    '- Always extract this value into the "confirmationCode" field when user intent is cancelReservation or changeReservation.',
+    '- Never confuse confirmationCode with timeSlot or name.'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -115,6 +123,12 @@ export const extractFields = async (vivInput, restaurantId) => {
       }
 
       parsed.type = normalizedType;
+
+      // 🛡️ Confirmation code safety check
+      const cc = parsed.parsed?.confirmationCode;
+      if (cc && cc.includes(':')) {
+        console.warn('[extractFields] ⚠️ Suspected time misparsed as confirmationCode:', cc);
+      }
 
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
