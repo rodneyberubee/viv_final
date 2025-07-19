@@ -26,7 +26,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Your job is to:',
     '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
     '- Output valid JSON starting on the first line like:',
-    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": "John", "partySize": 2, "contactInfo": null, "date": null, "timeSlot": "18:00" } }',
+    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "partySize": null, "contactInfo": null, "date": null, "timeSlot": null } }',
     '',
     'Rules:',
     '- Always return "intent", "type", and "parsed"',
