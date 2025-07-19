@@ -13,6 +13,12 @@ const normalizeDate = (rawDate) => {
   return parsed.isValid() ? parsed.year(2025).format('YYYY-MM-DD') : rawDate;
 };
 
+const normalizeTimeSlot = (rawTime) => {
+  if (!rawTime || typeof rawTime !== 'string') return rawTime;
+  const parsed = dayjs(rawTime, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
+  return parsed.isValid() ? parsed.format('HH:mm') : rawTime;
+};
+
 export const extractFields = async (vivInput, restaurantId) => {
   const start = Date.now();
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -102,6 +108,12 @@ export const extractFields = async (vivInput, restaurantId) => {
         }
         if (parsed.parsed.newDate) {
           parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
+        }
+        if (parsed.parsed.timeSlot) {
+          parsed.parsed.timeSlot = normalizeTimeSlot(parsed.parsed.timeSlot);
+        }
+        if (parsed.parsed.newTimeSlot) {
+          parsed.parsed.newTimeSlot = normalizeTimeSlot(parsed.parsed.newTimeSlot);
         }
       }
 
