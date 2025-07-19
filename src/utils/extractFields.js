@@ -10,30 +10,18 @@ export const extractFields = async (vivInput, restaurantId) => {
   console.log('[extractFields] 📌 restaurantId:', restaurantId);
 
   const systemPrompt = [
-    'You are Viv, a helpful and warm AI concierge who helps users make, cancel, or change reservations, or check availability.',
+    'You are VivB, a structured parser for a restaurant AI assistant.',
     '',
-    '⚠️ Important: If the user has provided enough information, respond first with a single valid JSON block.',
-    'Never speak before the JSON. Use natural language only after the backend has responded.',
-    'Always use one of the following values for `type`: "reservation.complete", "reservation.cancel", "reservation.change", "availability.check".',
+    'Your job is to:',
+    '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
+    '- Output valid JSON starting on the first line like:',
+    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": "John", "partySize": 2, "contactInfo": null, "date": null, "timeSlot": "18:00" } }',
     '',
-    'Examples:',
-    '1. Reservation:',
-    '{"type":"reservation.complete","name":"John","partySize":2,"contactInfo":"john@example.com","date":"2025-07-10","timeSlot":"18:00"}',
-    '(Then confirm the booking naturally in your own words)',
-    '',
-    '2. Cancellation:',
-    '{"type":"reservation.cancel","confirmationCode":"ABC123"}',
-    '(Then confirm the cancellation in your own words)',
-    '',
-    '3. Change:',
-    '{"type":"reservation.change","confirmationCode":"ABC123","newDate":"2025-07-11","newTimeSlot":"19:00"}',
-    '(Then confirm the change naturally in your own words)',
-    '',
-    '4. Availability:',
-    '{"type":"availability.check","date":"2025-07-12","timeSlot":"18:30"}',
-    '(Then say you’ll check or report if it’s available)',
-    '',
-    'Do not repeat these examples. Use your own words freely.'
+    'Rules:',
+    '- Always return "intent", "type", and "parsed"',
+    '- If any required fields are missing, set them to null',
+    '- For incomplete data, use types like "reservation.incomplete", "reservation.change.incomplete"',
+    '- Never speak before or after the JSON block'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -78,37 +66,35 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       parsed = JSON.parse(jsonString);
 
-      if (!parsed.type) {
-        console.warn('[extractFields] ❌ No "type" field in parsed JSON:', parsed);
+      if (!parsed.intent) {
+        console.warn('[extractFields] ❌ No "intent" field in parsed JSON:', parsed);
         return { type: 'chat', parsed: {} };
       }
 
-      // 🔄 Normalize type
-      const normalizedType = {
-        cancelReservation: 'reservation.cancel',
-        reservationCancel: 'reservation.cancel',
-        changeReservation: 'reservation.change',
-        reservationChange: 'reservation.change',
-        makeReservation: 'reservation.complete',
-        reservationComplete: 'reservation.complete',
-        checkAvailability: 'availability.check',
-        availabilityCheck: 'availability.check'
-      }[parsed.type] || parsed.type;
+      // 🔄 Normalize type based on intent + completeness
+      let normalizedType = parsed.type;
+
+      if (parsed.intent === 'reservation') {
+        const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
+        const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
+        normalizedType = incomplete ? 'reservation.incomplete' : 'reservation.complete';
+      }
+
+      if (parsed.intent === 'changeReservation') {
+        const { confirmationCode, newDate, newTimeSlot } = parsed.parsed || {};
+        const incomplete = [confirmationCode, newDate, newTimeSlot].some(v => !v);
+        normalizedType = incomplete ? 'reservation.change.incomplete' : 'reservation.change';
+      }
+
+      if (parsed.intent === 'cancelReservation') {
+        normalizedType = 'reservation.cancel';
+      }
+
+      if (parsed.intent === 'checkAvailability') {
+        normalizedType = 'availability.check';
+      }
 
       parsed.type = normalizedType;
-
-      // 🔍 Validate required fields for reservation.change
-      if (parsed.type === 'reservation.change') {
-        const { confirmationCode, newDate, newTimeSlot } = parsed;
-        if (!confirmationCode || !newDate || !newTimeSlot) {
-          console.warn('[extractFields] ❌ Missing fields for reservation.change:', {
-            confirmationCode,
-            newDate,
-            newTimeSlot
-          });
-          return { type: 'chat', parsed: {} };
-        }
-      }
 
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
@@ -121,7 +107,8 @@ export const extractFields = async (vivInput, restaurantId) => {
 
     return {
       type: parsed.type,
-      parsed
+      intent: parsed.intent,
+      parsed: parsed.parsed
     };
 
   } catch (error) {
