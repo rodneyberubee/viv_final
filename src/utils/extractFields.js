@@ -13,7 +13,7 @@ const normalizeDate = (rawDate) => {
   return parsed.isValid() ? parsed.year(2025).format('YYYY-MM-DD') : rawDate;
 };
 
-const normalizeTimeSlot = (rawTime) => {
+const normalizetime slot = (rawTime) => {
   if (!rawTime || typeof rawTime !== 'string') return rawTime;
 
   const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
@@ -21,7 +21,7 @@ const normalizeTimeSlot = (rawTime) => {
 
   const parsed = dayjs(withSpace, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
   if (!parsed.isValid()) {
-    console.warn('[normalizeTimeSlot] ⚠️ Could not parse:', rawTime);
+    console.warn('[normalizetime slot] ⚠️ Could not parse:', rawTime);
     return rawTime;
   }
 
@@ -41,10 +41,10 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Your job is to:',
     '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
     '- Output valid JSON starting on the first line like:',
-    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "partySize": null, "contactInfo": null, "date": null, "timeSlot": null } }',
-    '{ "intent": "changeReservation", "type": "changeReservation.incomplete", "parsed": { "confirmationCode": null, "newDate": null, "newTimeSlot": null } }',
-    '{ "intent": "cancelReservation", "type": "cancelReservation.incomplete", "parsed": { "confirmationCode": null } }',
-    '{ "intent": "checkAvailability", "type": "checkAvailability.incomplete", "parsed": { "date": null, "timeSlot": null } }',
+    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "party size": null, "contact info": null, "date": null, "time slot": null } }',
+    '{ "intent": "changeReservation", "type": "changeReservation.incomplete", "parsed": { "confirmation code": null, "newDate": null, "newtime slot": null } }',
+    '{ "intent": "cancelReservation", "type": "cancelReservation.incomplete", "parsed": { "confirmation code": null } }',
+    '{ "intent": "checkAvailability", "type": "checkAvailability.incomplete", "parsed": { "date": null, "time slot": null } }',
     '',
     'Rules:',
     '- Always return "intent", "type", and "parsed"',
@@ -53,12 +53,12 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- Never speak before or after the JSON block.',
     '',
     'Confirmation Code Rules:',
-    '- confirmationCode is a short string used to identify an existing reservation.',
+    '- confirmation code is a short string used to identify an existing reservation.',
     '- Typical format: lowercase letters and/or numbers (e.g., "abc123", "5e4wotk2r", "38f02zn")',
-    '- confirmationCodes are 6–10 characters and are never a time like "6:30 PM".',
+    '- confirmation codes are 6–10 characters and are never a time like "6:30 PM".',
     '- Users might say: "My code is abc123", "Cancel reservation 9x7vwp", "Change 5e4wotk2r to 7 PM".',
-    '- Always extract this value into the "confirmationCode" field when user intent is cancelReservation or changeReservation.',
-    '- Never confuse confirmationCode with timeSlot or name.'
+    '- Always extract this value into the "confirmation code" field when user intent is cancelReservation or changeReservation.',
+    '- Never confuse confirmation code with time slot or name.'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -118,28 +118,28 @@ export const extractFields = async (vivInput, restaurantId) => {
         if (parsed.parsed.newDate) {
           parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
         }
-        if (parsed.parsed.timeSlot) {
-          const original = parsed.parsed.timeSlot;
-          parsed.parsed.timeSlot = normalizeTimeSlot(original);
-          console.log('[normalizeTimeSlot] 🕓 Normalized timeSlot:', original, '→', parsed.parsed.timeSlot);
+        if (parsed.parsed.time slot) {
+          const original = parsed.parsed.time slot;
+          parsed.parsed.time slot = normalizetime slot(original);
+          console.log('[normalizetime slot] 🕓 Normalized time slot:', original, '→', parsed.parsed.time slot);
         }
-        if (parsed.parsed.newTimeSlot) {
-          const original = parsed.parsed.newTimeSlot;
-          parsed.parsed.newTimeSlot = normalizeTimeSlot(original);
-          console.log('[normalizeTimeSlot] 🕓 Normalized newTimeSlot:', original, '→', parsed.parsed.newTimeSlot);
+        if (parsed.parsed.newtime slot) {
+          const original = parsed.parsed.newtime slot;
+          parsed.parsed.newtime slot = normalizetime slot(original);
+          console.log('[normalizetime slot] 🕓 Normalized newtime slot:', original, '→', parsed.parsed.newtime slot);
         }
       }
 
       // 🧠 Final intent/type handling
       if (parsed.intent === 'reservation') {
-        const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
-        const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
+        const { name, party size, contact info, date, time slot } = parsed.parsed || {};
+        const incomplete = [name, party size, contact info, date, time slot].some(v => !v);
         normalizedType = incomplete ? 'reservation.incomplete' : 'reservation.complete';
       }
 
       if (parsed.intent === 'changeReservation') {
-        const { confirmationCode, newDate, newTimeSlot } = parsed.parsed || {};
-        const incomplete = [confirmationCode, newDate, newTimeSlot].some(v => !v);
+        const { confirmation code, newDate, newtime slot } = parsed.parsed || {};
+        const incomplete = [confirmation code, newDate, newtime slot].some(v => !v);
         normalizedType = incomplete ? 'reservation.change.incomplete' : 'reservation.change';
       }
 
@@ -154,9 +154,9 @@ export const extractFields = async (vivInput, restaurantId) => {
       parsed.type = normalizedType;
 
       // 🛡️ Confirmation code safety check
-      const cc = parsed.parsed?.confirmationCode;
+      const cc = parsed.parsed?.confirmation code;
       if (cc && cc.includes(':')) {
-        console.warn('[extractFields] ⚠️ Suspected time misparsed as confirmationCode:', cc);
+        console.warn('[extractFields] ⚠️ Suspected time misparsed as confirmation code:', cc);
       }
 
     } catch (e) {
