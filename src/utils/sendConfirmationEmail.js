@@ -23,8 +23,14 @@ export const sendConfirmationEmail = async ({ type, confirmationCode, config }) 
     const record = records[0];
     const { name, contactInfo, date, timeSlot, partySize } = record.fields;
 
-    if (!contactInfo?.email) {
-      console.error('[EMAIL ERROR] No email address found in contactInfo:', contactInfo);
+    // ✅ Fix: support both object or string-based contactInfo
+    const email =
+      typeof contactInfo === 'string'
+        ? contactInfo
+        : contactInfo?.email;
+
+    if (!email) {
+      console.error('[EMAIL ERROR] No valid email address found in contactInfo:', contactInfo);
       return;
     }
 
@@ -81,12 +87,12 @@ export const sendConfirmationEmail = async ({ type, confirmationCode, config }) 
 
     await resend.emails.send({
       from: 'reservation@vivaitable.com',
-      to: contactInfo.email,
+      to: email,
       subject,
       html
     });
 
-    console.log(`[EMAIL] ${type} email sent to ${contactInfo.email}`);
+    console.log(`[EMAIL] ${type} email sent to ${email}`);
   } catch (err) {
     console.error('[EMAIL ERROR]', err);
   }
