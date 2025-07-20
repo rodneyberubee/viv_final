@@ -48,7 +48,7 @@ export const sendConfirmationEmail = async ({ type, confirmationCode, config }) 
             <li><strong>Party Size:</strong> ${partySize}</li>
             <li><strong>Confirmation Code:</strong> ${confirmationCode}</li>
           </ul>
-          <p>Reply to this email if you need to change or cancel.</p>
+          <p>If you need to makes changes, please visit my site again with your confirmation code.</p>
           <p>– Viv, your AI reservationist</p>
         `;
         break;
