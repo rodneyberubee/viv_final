@@ -105,6 +105,15 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       if (!parsed.intent) {
         console.warn('[extractFields] ❌ No "intent" field in parsed JSON:', parsed);
+
+        // 🧠 Chat heuristic fallback
+        const lastMsg = vivInput.messages?.slice(-1)[0]?.content?.toLowerCase() || '';
+        const chatTriggers = ['what', 'see', 'debug', 'why', 'status', 'viv', 'explain', 'help'];
+        if (chatTriggers.some(trigger => lastMsg.includes(trigger))) {
+          console.log('[extractFields] 💬 Triggered fallback to type: chat');
+          return { type: 'chat', parsed: {} };
+        }
+
         return { type: 'chat', parsed: {} };
       }
 
