@@ -11,12 +11,18 @@ export const checkAvailability = async (req) => {
   console.log('[DEBUG] Input:', { restaurantId, date, timeSlot });
 
   if (!date || !timeSlot) {
-    console.error('[ERROR] Missing required fields');
+    const parsed = {
+      date: date || null,
+      timeSlot: timeSlot || null
+    };
+
+    console.warn('[WARN] Incomplete availability request:', parsed);
+
     return {
-      status: 400,
+      status: 200,
       body: {
-        type: 'availability.check.error',
-        error: 'missing_required_fields'
+        type: 'availability.check.incomplete',
+        parsed
       }
     };
   }
@@ -106,7 +112,7 @@ export const checkAvailability = async (req) => {
       return {
         status: 200,
         body: {
-          type: 'availability.unavailable', // ✅ Standardized
+          type: 'availability.unavailable',
           available: false,
           reason: isBlocked ? 'blocked' : 'full',
           date: normalizedDate,
@@ -120,7 +126,7 @@ export const checkAvailability = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'availability.available', // ✅ Standardized
+        type: 'availability.available',
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
