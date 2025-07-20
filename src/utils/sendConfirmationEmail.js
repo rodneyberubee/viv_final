@@ -1,18 +1,26 @@
 import { Resend } from 'resend';
-import { getAirtableRecordByConfirmation } from '../utils/airtableHelpers.js';
+import Airtable from 'airtable';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendConfirmationEmail = async ({ type, confirmationCode, config }) => {
   try {
     const { baseId, tableName } = config;
-    const record = await getAirtableRecordByConfirmation(baseId, tableName, confirmationCode);
+    const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
-    if (!record) {
+    const records = await airtable(tableName)
+      .select({
+        filterByFormula: `{rawConfirmationCode} = '${confirmationCode}'`,
+        maxRecords: 1
+      })
+      .all();
+
+    if (records.length === 0) {
       console.error('[EMAIL ERROR] No record found for confirmation:', confirmationCode);
       return;
     }
 
+    const record = records[0];
     const { name, contactInfo, date, timeSlot, partySize } = record.fields;
 
     if (!contactInfo?.email) {
