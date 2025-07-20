@@ -81,7 +81,6 @@ export const askVivRouter = async (req, res) => {
       console.log('[askVivRouter] ⏳ Incomplete input — returning to VivA for clarification.');
       return res.status(200).json({
         type: parsed.type,
-        intent: parsed.intent,
         parsed: renameKeysForViv(parsed),
         user: messages[messages.length - 1]?.content || ''
       });
