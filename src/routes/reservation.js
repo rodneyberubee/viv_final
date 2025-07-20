@@ -1,6 +1,7 @@
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
@@ -154,6 +155,9 @@ export const reservation = async (req) => {
     }
 
     const { confirmationCode } = await createReservation(parsed, config);
+
+    // ✨ Send email after successful reservation creation
+    await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
     const payload = {
       type: 'reservation.complete',
