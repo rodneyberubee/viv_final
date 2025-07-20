@@ -82,7 +82,8 @@ export const askVivRouter = async (req, res) => {
       return res.status(200).json({
         type: parsed.type,
         intent: parsed.intent,
-        parsed: renameKeysForViv(parsed)
+        parsed: renameKeysForViv(parsed),
+        user: messages[messages.length - 1]?.content || ''
       });
     }
 
@@ -120,7 +121,8 @@ export const askVivRouter = async (req, res) => {
         return res.status(200).json({
           type: 'chat',
           response: 'Sorry, I didn’t understand that request.',
-          error: false
+          error: false,
+          user: messages[messages.length - 1]?.content || ''
         });
     }
   } catch (error) {
