@@ -3,20 +3,14 @@ import Airtable from 'airtable';
 import dayjs from 'dayjs';
 
 export const checkAvailability = async (req) => {
-  console.log('[DEBUG] checkAvailability called');
-
   const { restaurantId } = req.params;
   const { date, timeSlot } = req.body;
-
-  console.log('[DEBUG] Input:', { restaurantId, date, timeSlot });
 
   if (!date || !timeSlot) {
     const parsed = {
       date: date || null,
       timeSlot: timeSlot || null
     };
-
-    console.warn('[WARN] Incomplete availability request:', parsed);
 
     return {
       status: 200,
@@ -40,7 +34,6 @@ export const checkAvailability = async (req) => {
   }
 
   const { baseId, tableName, maxReservations } = config;
-  console.log('[DEBUG] Loaded config:', config);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
@@ -52,8 +45,6 @@ export const checkAvailability = async (req) => {
     const allReservations = await airtable(tableName)
       .select({ filterByFormula: formula })
       .all();
-
-    console.log(`[DEBUG] Pulled ${allReservations.length} reservations for date: ${normalizedDate}`);
 
     const isSlotAvailable = (time) => {
       const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time);
