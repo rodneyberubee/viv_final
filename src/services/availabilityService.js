@@ -1,9 +1,9 @@
 import dayjs from 'dayjs';
 
-export async function isSlotAvailable({ base, tableName, date, timeSlot, maxReservations }) {
+export async function isSlotAvailable({ base, tableName, date, time, maxReservations }) {
   const records = await base(tableName)
     .select({
-      filterByFormula: `AND({date} = '${date}', {timeSlot} = '${timeSlot}')`
+      filterByFormula: `AND({date} = '${date}', {time} = '${time}')`
     })
     .all();
 
