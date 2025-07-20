@@ -38,7 +38,12 @@ export const askVivRouter = async (req, res) => {
     messages = req.body.messages;
     console.log('[askVivRouter] 📥 Using messages[] input for GPT parsing');
   } else if (req.body.userMessage) {
-    messages = [{ role: 'user', content: typeof req.body.userMessage === 'string' ? req.body.userMessage : req.body.userMessage.text }];
+    messages = [{
+      role: 'user',
+      content: typeof req.body.userMessage === 'string'
+        ? req.body.userMessage
+        : req.body.userMessage.text
+    }];
     console.log('[askVivRouter] 🧾 Converted userMessage to messages[]:', messages);
   }
 
@@ -79,9 +84,13 @@ export const askVivRouter = async (req, res) => {
     // Handle incomplete types — send back to VivA for clarification
     if (parsed.type.endsWith('.incomplete')) {
       console.log('[askVivRouter] ⏳ Incomplete input — returning to VivA for clarification.');
+
+      // Strip intent and restaurantId before returning to frontend
+      const { intent, restaurantId, ...safeParsed } = parsed;
+
       return res.status(200).json({
         type: parsed.type,
-        parsed: renameKeysForViv(parsed),
+        parsed: renameKeysForViv(safeParsed),
         user: messages[messages.length - 1]?.content || ''
       });
     }
