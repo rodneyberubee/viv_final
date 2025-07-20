@@ -21,15 +21,12 @@ export const createReservation = async (parsed, config) => {
     status: 'confirmed'
   };
 
-  console.log('[DEBUG] Writing to Airtable:', fields);
   await base(tableName).create([{ fields }]);
   return { confirmationCode };
 };
 
 export const reservation = async (req) => {
   const { restaurantId } = req.params;
-  console.log('[DEBUG] restaurantId from req.body:', restaurantId);
-  console.log('[DEBUG] Full req.body:', req.body);
 
   let parsed = req.body;
 
@@ -61,7 +58,6 @@ export const reservation = async (req) => {
       error: 'missing_required_fields',
       missing
     };
-    console.warn('[DEBUG] Missing required field(s):', missing);
     return { status: 400, body: error };
   }
 
@@ -72,7 +68,6 @@ export const reservation = async (req) => {
         type: 'reservation.error',
         error: 'config_not_found'
       };
-      console.error('[DEBUG] No config found for restaurantId:', restaurantId);
       return { status: 404, body: error };
     }
 
@@ -92,7 +87,6 @@ export const reservation = async (req) => {
     }
 
     if (reservationTime.isBefore(now)) {
-      console.warn('[WARN] Reservation time is in the past, proceeding anyway (guard disabled)');
       warningNote = 'There may have been an issue with your info, can you reverify it? If nothing is wrong you can disregard this message';
     }
 
