@@ -13,7 +13,7 @@ const normalizeDate = (rawDate) => {
   return parsed.isValid() ? parsed.year(2025).format('YYYY-MM-DD') : rawDate;
 };
 
-const normalizetime slot = (rawTime) => {
+const normalizetime = (rawTime) => {
   if (!rawTime || typeof rawTime !== 'string') return rawTime;
 
   const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
@@ -21,7 +21,7 @@ const normalizetime slot = (rawTime) => {
 
   const parsed = dayjs(withSpace, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
   if (!parsed.isValid()) {
-    console.warn('[normalizetime slot] ⚠️ Could not parse:', rawTime);
+    console.warn('[normalizetime] ⚠️ Could not parse:', rawTime);
     return rawTime;
   }
 
@@ -41,10 +41,10 @@ export const extractFields = async (vivInput, restaurantId) => {
     'Your job is to:',
     '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
     '- Output valid JSON starting on the first line like:',
-    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "party size": null, "contact info": null, "date": null, "time slot": null } }',
-    '{ "intent": "changeReservation", "type": "changeReservation.incomplete", "parsed": { "confirmation code": null, "newDate": null, "newtime slot": null } }',
+    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "party size": null, "email": null, "date": null, "time": null } }',
+    '{ "intent": "changeReservation", "type": "changeReservation.incomplete", "parsed": { "confirmation code": null, "newDate": null, "newtime": null } }',
     '{ "intent": "cancelReservation", "type": "cancelReservation.incomplete", "parsed": { "confirmation code": null } }',
-    '{ "intent": "checkAvailability", "type": "checkAvailability.incomplete", "parsed": { "date": null, "time slot": null } }',
+    '{ "intent": "checkAvailability", "type": "checkAvailability.incomplete", "parsed": { "date": null, "time": null } }',
     '',
     'Rules:',
     '- Always return "intent", "type", and "parsed"',
@@ -58,7 +58,7 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- confirmation codes are 6–10 characters and are never a time like "6:30 PM".',
     '- Users might say: "My code is abc123", "Cancel reservation 9x7vwp", "Change 5e4wotk2r to 7 PM".',
     '- Always extract this value into the "confirmation code" field when user intent is cancelReservation or changeReservation.',
-    '- Never confuse confirmation code with time slot or name.'
+    '- Never confuse confirmation code with time or name.'
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -118,28 +118,28 @@ export const extractFields = async (vivInput, restaurantId) => {
         if (parsed.parsed.newDate) {
           parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
         }
-        if (parsed.parsed.time slot) {
-          const original = parsed.parsed.time slot;
-          parsed.parsed.time slot = normalizetime slot(original);
-          console.log('[normalizetime slot] 🕓 Normalized time slot:', original, '→', parsed.parsed.time slot);
+        if (parsed.parsed.time) {
+          const original = parsed.parsed.time;
+          parsed.parsed.time = normalizetime(original);
+          console.log('[normalizetime] 🕓 Normalized time:', original, '→', parsed.parsed.time);
         }
-        if (parsed.parsed.newtime slot) {
-          const original = parsed.parsed.newtime slot;
-          parsed.parsed.newtime slot = normalizetime slot(original);
-          console.log('[normalizetime slot] 🕓 Normalized newtime slot:', original, '→', parsed.parsed.newtime slot);
+        if (parsed.parsed.newtime) {
+          const original = parsed.parsed.newtime;
+          parsed.parsed.newtime = normalizetime(original);
+          console.log('[normalizetime] 🕓 Normalized newtime:', original, '→', parsed.parsed.newtime);
         }
       }
 
       // 🧠 Final intent/type handling
       if (parsed.intent === 'reservation') {
-        const { name, party size, contact info, date, time slot } = parsed.parsed || {};
-        const incomplete = [name, party size, contact info, date, time slot].some(v => !v);
+        const { name, party size, email, date, time } = parsed.parsed || {};
+        const incomplete = [name, party size, email, date, time].some(v => !v);
         normalizedType = incomplete ? 'reservation.incomplete' : 'reservation.complete';
       }
 
       if (parsed.intent === 'changeReservation') {
-        const { confirmation code, newDate, newtime slot } = parsed.parsed || {};
-        const incomplete = [confirmation code, newDate, newtime slot].some(v => !v);
+        const { confirmation code, newDate, newtime } = parsed.parsed || {};
+        const incomplete = [confirmation code, newDate, newtime].some(v => !v);
         normalizedType = incomplete ? 'reservation.change.incomplete' : 'reservation.change';
       }
 
