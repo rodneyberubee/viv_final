@@ -1,6 +1,7 @@
 import Airtable from 'airtable';
 import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
 export const changeReservation = async (req) => {
   const { restaurantId } = req.params;
@@ -134,6 +135,13 @@ export const changeReservation = async (req) => {
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
+    });
+
+    // ✅ Trigger confirmation email for update
+    await sendConfirmationEmail({
+      type: 'change',
+      confirmationCode: normalizedCode,
+      config
     });
 
     return {
