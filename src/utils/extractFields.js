@@ -21,7 +21,6 @@ const normalizeTimeSlot = (rawTime) => {
 
   const parsed = dayjs(withSpace, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
   if (!parsed.isValid()) {
-    console.warn('[normalizeTimeSlot] ⚠️ Could not parse:', rawTime);
     return rawTime;
   }
 
@@ -30,10 +29,6 @@ const normalizeTimeSlot = (rawTime) => {
 
 export const extractFields = async (vivInput, restaurantId) => {
   const start = Date.now();
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[extractFields] 🚀 Triggered');
-  console.log('[extractFields] 📬 Input message:', vivInput);
-  console.log('[extractFields] 📌 restaurantId:', restaurantId);
 
   const systemPrompt = [
     'You are VivB, a structured parser for a restaurant AI assistant.',
@@ -83,9 +78,7 @@ export const extractFields = async (vivInput, restaurantId) => {
       }),
     });
 
-    console.log('[extractFields] 📡 OpenAI response status:', openaiRes.status);
     const json = await openaiRes.json();
-    console.log('[extractFields] 🧾 Full OpenAI JSON:', JSON.stringify(json, null, 2));
 
     if (json.error) {
       console.error('[extractFields] ❌ OpenAI API returned error:', json.error);
@@ -93,7 +86,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     }
 
     const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
-    console.log('[extractFields] 💬 AI Raw Content:', aiResponse);
 
     let parsed;
     try {
@@ -104,20 +96,15 @@ export const extractFields = async (vivInput, restaurantId) => {
       parsed = JSON.parse(jsonString);
 
       if (!parsed.intent) {
-        console.warn('[extractFields] ❌ No "intent" field in parsed JSON:', parsed);
-
-        // 🧠 Chat heuristic fallback
         const lastMsg = vivInput.messages?.slice(-1)[0]?.content?.toLowerCase() || '';
         const chatTriggers = ['what', 'see', 'debug', 'why', 'status', 'viv', 'explain', 'help'];
         if (chatTriggers.some(trigger => lastMsg.includes(trigger))) {
-          console.log('[extractFields] 💬 Triggered fallback to type: chat');
           return { type: 'chat', parsed: {} };
         }
 
         return { type: 'chat', parsed: {} };
       }
 
-      // 🔄 Normalize fields
       let normalizedType = parsed.type;
 
       if (parsed.parsed) {
@@ -130,16 +117,13 @@ export const extractFields = async (vivInput, restaurantId) => {
         if (parsed.parsed.timeSlot) {
           const original = parsed.parsed.timeSlot;
           parsed.parsed.timeSlot = normalizeTimeSlot(original);
-          console.log('[normalizeTimeSlot] 🕓 Normalized timeSlot:', original, '→', parsed.parsed.timeSlot);
         }
         if (parsed.parsed.newTimeSlot) {
           const original = parsed.parsed.newTimeSlot;
           parsed.parsed.newTimeSlot = normalizeTimeSlot(original);
-          console.log('[normalizeTimeSlot] 🕓 Normalized newTimeSlot:', original, '→', parsed.parsed.newTimeSlot);
         }
       }
 
-      // 🧠 Final intent/type handling
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
@@ -162,20 +146,15 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       parsed.type = normalizedType;
 
-      // 🛡️ Confirmation code safety check
       const cc = parsed.parsed?.confirmationCode;
       if (cc && cc.includes(':')) {
-        console.warn('[extractFields] ⚠️ Suspected time misparsed as confirmationCode:', cc);
+        // Do nothing (debug removed)
       }
 
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return { type: 'chat', parsed: {} };
     }
-
-    const elapsed = Date.now() - start;
-    console.log(`[extractFields] ✅ Success in ${elapsed}ms — Parsed JSON:`, parsed);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return {
       type: parsed.type,
