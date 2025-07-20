@@ -3,8 +3,6 @@ import dayjs from 'dayjs';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 
 export const changeReservation = async (req) => {
-  console.log('[DEBUG][changeReservation] Route hit');
-
   const { restaurantId } = req.params;
   if (!restaurantId) {
     console.error('[ERROR] restaurantId is missing from req.body');
