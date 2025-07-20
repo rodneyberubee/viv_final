@@ -1,5 +1,6 @@
 import Airtable from 'airtable';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
@@ -53,7 +54,15 @@ export const cancelReservation = async (req) => {
     }
 
     const reservation = records[0];
+
     await airtable(tableName).destroy(reservation.id);
+
+    // ✅ Trigger cancellation email
+    await sendConfirmationEmail({
+      type: 'cancel',
+      confirmationCode,
+      config
+    });
 
     return {
       status: 200,
