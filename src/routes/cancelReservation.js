@@ -45,7 +45,7 @@ export const cancelReservation = async (req) => {
     const records = await airtable(tableName)
       .select({
         filterByFormula: formula,
-        fields: ['name', 'date', 'timeSlot', 'status']
+        fields: ['name', 'date', 'time', 'status']
       })
       .all();
 
@@ -76,7 +76,7 @@ export const cancelReservation = async (req) => {
         canceledReservation: {
           name: reservation.fields.name,
           date: reservation.fields.date,
-          timeSlot: reservation.fields.timeSlot
+          time: reservation.fields.time
         }
       }
     };
