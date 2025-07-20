@@ -17,10 +17,6 @@ export const changeReservation = async (req) => {
 
   const { confirmationCode, newDate, newTimeSlot } = req.body;
 
-  console.log('[DEBUG][changeReservation] Incoming Params:', {
-    confirmationCode, newDate, newTimeSlot
-  });
-
   const normalizedCode = confirmationCode?.trim();
   const normalizedDate = newDate?.trim();
   const normalizedTime = newTimeSlot?.trim();
@@ -54,7 +50,6 @@ export const changeReservation = async (req) => {
   }
 
   const { baseId, tableName, maxReservations } = config;
-  console.log('[DEBUG][changeReservation] Loaded config:', config);
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
@@ -141,7 +136,6 @@ export const changeReservation = async (req) => {
       timeSlot: normalizedTime,
     });
 
-    console.log('[DEBUG][changeReservation] Reservation updated successfully');
     return {
       status: 200,
       body: {
