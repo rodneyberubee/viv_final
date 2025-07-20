@@ -4,6 +4,20 @@ import { cancelReservation } from './cancelReservation.js';
 import { checkAvailability } from './checkAvailability.js';
 import { extractFields } from '../utils/extractFields.js';
 
+const renameKeysForViv = (parsed) => {
+  const keyMap = {
+    confirmationCode: 'confirmation code',
+    contactInfo: 'email',
+    partySize: 'party size',
+    timeSlot: 'time',
+    newDate: 'new date',
+    newTimeSlot: 'new time'
+  };
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, value]) => [keyMap[key] || key, value])
+  );
+};
+
 export const askVivRouter = async (req, res) => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('[askVivRouter] 🧠 Triggered');
@@ -62,13 +76,13 @@ export const askVivRouter = async (req, res) => {
   console.log('[askVivRouter] 📦 Payload to next route:', parsed);
 
   try {
-    // Handle incomplete types — send back to VivA
+    // Handle incomplete types — send back to VivA for clarification
     if (parsed.type.endsWith('.incomplete')) {
       console.log('[askVivRouter] ⏳ Incomplete input — returning to VivA for clarification.');
       return res.status(200).json({
         type: parsed.type,
         intent: parsed.intent,
-        parsed
+        parsed: renameKeysForViv(parsed)
       });
     }
 
