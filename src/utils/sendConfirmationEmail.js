@@ -40,7 +40,7 @@ export const sendConfirmationEmail = async ({ type, confirmationCode }) => {
     }
 
     await resend.emails.send({
-      from: 'viv@yourdomain.com',
+      from: 'reservation@vivaitable.com',
       to: contactInfo.email,
       subject,
       html
