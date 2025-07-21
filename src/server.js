@@ -16,6 +16,7 @@ import { cancelReservation } from './routes/cancelReservation.js';
 import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
+import { dashboardRouter } from './routes/dashboard/dashboardRouter.js'; // ✅ ADDED
 
 dotenv.config();
 
@@ -53,6 +54,7 @@ app.use(morgan('dev'));
 app.use(express.json());
 
 app.use('/api/askViv/:restaurantId', askVivRouter);
+app.use('/api/dashboard', dashboardRouter); // ✅ ADDED
 
 // ✅ Route bindings (restaurantId always from req.params)
 app.post('/api/reservation/:restaurantId', reservation);
