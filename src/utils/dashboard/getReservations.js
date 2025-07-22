@@ -23,10 +23,19 @@ export async function getReservations(restaurantId) {
 
     console.log(`[DEBUG] Fetched ${records.length} reservation(s) for ${restaurantId}`);
 
-    return records.map(record => ({
+    const parsed = records.map(record => ({
       id: record.id,
-      ...record.fields
+      confirmationCode: record.fields.confirmationCode || '—',
+      guestName: record.fields.guestName || '—',
+      partySize: record.fields.partySize || 1,
+      date: record.fields.date || '',
+      timeSlot: record.fields.timeSlot || '',
+      status: record.fields.status || 'pending'
     }));
+
+    console.log('[DEBUG] Mapped reservations:', parsed);
+    return parsed;
+
   } catch (error) {
     console.error(`[ERROR] getReservations failed for ${restaurantId}:`, error.message);
     return [];
