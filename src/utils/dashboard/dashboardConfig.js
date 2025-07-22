@@ -31,10 +31,34 @@ export const dashboardConfig = async (restaurantId) => {
     }
 
     const fields = records[0].fields;
+
     const config = {
       restaurantId: fields.restaurantId,
       baseId: fields.baseId,
       tableName: fields.tableName,
+      maxReservations: fields.maxReservations,
+      cutoffTime: fields.cutoffTime,
+      futureCutoff: fields.futureCutoff,
+      name: fields.name,
+      autonumber: fields.autonumber,
+      slug: fields.slug,
+      restaurantFormula: fields.restaurantFormula,
+      timeZone: fields.timeZone,
+      calibratedTime: fields.calibratedTime,
+      mondayOpen: fields.mondayOpen,
+      mondayClose: fields.mondayClose,
+      tuesdayOpen: fields.tuesdayOpen,
+      tuesdayClose: fields.tuesdayClose,
+      wednesdayOpen: fields.wednesdayOpen,
+      wednesdayClose: fields.wednesdayClose,
+      thursdayOpen: fields.thursdayOpen,
+      thursdayClose: fields.thursdayClose,
+      fridayOpen: fields.fridayOpen,
+      fridayClose: fields.fridayClose,
+      saturdayOpen: fields.saturdayOpen,
+      saturdayClose: fields.saturdayClose,
+      sundayOpen: fields.sundayOpen,
+      sundayClose: fields.sundayClose
     };
 
     console.log('[DEBUG] dashboardConfig resolved:', config);
