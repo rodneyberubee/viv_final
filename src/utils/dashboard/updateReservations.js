@@ -1,8 +1,8 @@
 import { dashboardConfig } from './dashboardConfig.js';
 import { getAirtableBase } from './airtableHelpers.js';
 
-export async function updateReservation(restaurantId, recordId, updatedFields) {
-  console.log('[DEBUG] updateReservation called with:', { restaurantId, recordId, updatedFields });
+export async function updateReservations(restaurantId, recordId, updatedFields) {
+  console.log('[DEBUG] updateReservations called with:', { restaurantId, recordId, updatedFields });
 
   try {
     const config = await dashboardConfig(restaurantId);
@@ -22,7 +22,7 @@ export async function updateReservation(restaurantId, recordId, updatedFields) {
 
     return { success: true, updatedRecord: result };
   } catch (error) {
-    console.error(`[ERROR] updateReservation failed: ${error.message}`);
+    console.error(`[ERROR] updateReservations failed: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
