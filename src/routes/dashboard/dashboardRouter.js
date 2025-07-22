@@ -1,7 +1,7 @@
 import express from 'express';
 import { getReservations } from '../../utils/dashboard/getReservations.js';
 import { updateReservations } from '../../utils/dashboard/updateReservations.js';
-import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js'; // ✅ fixed import
+import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js'; // ✅ CORRECT — matches named export
 
 export const dashboardRouter = express.Router();
 
