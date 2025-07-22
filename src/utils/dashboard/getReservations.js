@@ -25,12 +25,16 @@ export async function getReservations(restaurantId) {
 
     const parsed = records.map(record => ({
       id: record.id,
-      confirmationCode: record.fields.confirmationCode || '—',
-      guestName: record.fields.guestName || '—',
-      partySize: record.fields.partySize || 1,
       date: record.fields.date || '',
       timeSlot: record.fields.timeSlot || '',
-      status: record.fields.status || 'pending'
+      name: record.fields.name || '—',
+      partySize: record.fields.partySize || 1,
+      contactInfo: record.fields.contactInfo || '',
+      status: record.fields.status || 'pending',
+      notes: record.fields.notes || '',
+      confirmationCode: record.fields.confirmationCode || '—',
+      rawConfirmationCode: record.fields.rawConfirmationCode || '',
+      dateFormatted: record.fields.dateFormatted || ''
     }));
 
     console.log('[DEBUG] Mapped reservations:', parsed);
