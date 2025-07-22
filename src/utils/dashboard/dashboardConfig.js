@@ -2,7 +2,7 @@ import Airtable from 'airtable';
 import dotenv from 'dotenv';
 dotenv.config();
 
-export async function dashboardConfig(restaurantId) {
+export const dashboardConfig = async (restaurantId) => {
   console.log('[DEBUG] dashboardConfig called with restaurantId:', restaurantId);
 
   if (!restaurantId) {
@@ -44,4 +44,4 @@ export async function dashboardConfig(restaurantId) {
     console.error('[ERROR] dashboardConfig failed:', err.message);
     return null;
   }
-}
+};
