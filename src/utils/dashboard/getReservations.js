@@ -1,11 +1,11 @@
-import { getDashboardConfig } from './dashboardConfig.js';
+import dashboardConfig from './dashboardConfig.js'; // ✅ fixed
 import { getAirtableBase } from './airtableHelpers.js';
 
 export async function getReservations(restaurantId) {
   console.log('[DEBUG] getReservations called with restaurantId:', restaurantId);
 
   try {
-    const config = await getDashboardConfig(restaurantId);
+    const config = await dashboardConfig(restaurantId); // ✅ fixed usage
     if (!config) {
       console.warn('[WARN] No config found for restaurantId:', restaurantId);
       return [];
