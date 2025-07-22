@@ -1,11 +1,11 @@
-import { getDashboardConfig } from './dashboardConfig.js';
+import dashboardConfig from './dashboardConfig.js';
 import { getAirtableBase } from './airtableHelpers.js';
 
 export async function updateReservation(restaurantId, recordId, updatedFields) {
   console.log('[DEBUG] updateReservation called with:', { restaurantId, recordId, updatedFields });
 
   try {
-    const config = await getDashboardConfig(restaurantId);
+    const config = await dashboardConfig(restaurantId);
     if (!config) {
       console.warn('[WARN] No config found for restaurantId:', restaurantId);
       return { success: false, error: 'Invalid restaurant config' };
