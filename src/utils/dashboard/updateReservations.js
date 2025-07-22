@@ -1,4 +1,4 @@
-import dashboardConfig from './dashboardConfig.js';
+import { dashboardConfig } from './dashboardConfig.js';
 import { getAirtableBase } from './airtableHelpers.js';
 
 export async function updateReservation(restaurantId, recordId, updatedFields) {
