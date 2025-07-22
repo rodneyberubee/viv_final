@@ -16,6 +16,7 @@ import { cancelReservation } from './routes/cancelReservation.js';
 import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
+import { dashboardRouter } from './routes/dashboard/dashboardRouter.js'; // ✅ Import after
 
 dotenv.config();
 
@@ -52,9 +53,10 @@ app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json());
 
+// ✅ ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
+app.use('/api/dashboard/:restaurantId', dashboardRouter);
 
-// ✅ Route bindings (restaurantId always from req.params)
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
 app.post('/api/changeReservation/:restaurantId', changeReservation);
@@ -64,7 +66,6 @@ app.get('/', (req, res) => {
   res.send('👋 Viv Middleware is running. API only. Try /api/reservation or visit vivaitable.com.');
 });
 
-// ✅ Listen on 0.0.0.0 to allow external requests
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ Viv middleware server listening on port ${PORT}`);
 });
