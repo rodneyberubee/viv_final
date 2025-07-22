@@ -20,7 +20,7 @@ dashboardRouter.get('/', async (req, res) => {
   }
 
   try {
-    const reservations = await getReservations(config);
+    const reservations = await getReservations(restaurantId); // ✅ FIXED ARGUMENT
     return res.status(200).json({ reservations });
   } catch (err) {
     console.error('[ERROR] Failed to get reservations:', err.message);
