@@ -5,8 +5,8 @@ import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
 
 export const dashboardRouter = express.Router();
 
-// ✅ NEW: GET /reservations
-dashboardRouter.get('/reservations', async (req, res) => {
+// ✅ GET /api/dashboard/:restaurantId/reservations
+dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
   console.log('[DEBUG] dashboardRouter GET /reservations called');
 
   const { restaurantId } = req.params;
@@ -15,29 +15,23 @@ dashboardRouter.get('/reservations', async (req, res) => {
     return res.status(400).json({ error: 'Missing restaurantId in URL' });
   }
 
-  const config = await dashboardConfig(restaurantId);
-  if (!config) {
-    return res.status(404).json({ error: 'Invalid restaurantId or config not found' });
-  }
-
   try {
     const reservations = await getReservations(restaurantId);
-    return res.status(200).json({ reservations }); // must wrap in object
+    return res.status(200).json({ reservations });
   } catch (err) {
     console.error('[ERROR] Failed to get reservations:', err.message);
     return res.status(500).json({ error: 'Failed to fetch reservations' });
   }
 });
 
-// ✅ Existing POST handler for bulk updates
-dashboardRouter.post('/', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter POST called');
+// ✅ POST /api/dashboard/:restaurantId/updateReservation
+dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
+  console.log('[DEBUG] dashboardRouter POST /updateReservation called');
 
   const { restaurantId } = req.params;
   const updates = req.body;
 
   if (!restaurantId) {
-    console.error('[ERROR] Missing restaurantId in URL');
     return res.status(400).json({ error: 'Missing restaurantId in URL' });
   }
 
@@ -45,13 +39,8 @@ dashboardRouter.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Invalid or missing update data' });
   }
 
-  const config = await dashboardConfig(restaurantId);
-  if (!config) {
-    return res.status(404).json({ error: 'Invalid restaurantId or config not found' });
-  }
-
   try {
-    const result = await updateReservations(config, updates);
+    const result = await updateReservations(restaurantId, updates);
     return res.status(200).json({ success: true, updated: result });
   } catch (err) {
     console.error('[ERROR] Failed to update reservations:', err.message);
