@@ -1,8 +1,8 @@
 import { dashboardConfig } from './dashboardConfig.js';
 import { getAirtableBase } from './airtableHelpers.js';
 
-export async function updateReservations(restaurantId, recordId, updatedFields) {
-  console.log('[DEBUG] updateReservations called with:', { restaurantId, recordId, updatedFields });
+export async function updateReservations(restaurantId, updatesArray) {
+  console.log('[DEBUG] updateReservations called with:', { restaurantId, updatesArray });
 
   try {
     const config = await dashboardConfig(restaurantId);
@@ -17,10 +17,20 @@ export async function updateReservations(restaurantId, recordId, updatedFields) 
       return { success: false, error: 'Airtable base not initialized' };
     }
 
-    const result = await base(config.tableName).update(recordId, updatedFields);
-    console.log('[DEBUG] Reservation update result:', result.id);
+    const results = [];
 
-    return { success: true, updatedRecord: result };
+    for (const { recordId, updatedFields } of updatesArray) {
+      try {
+        const result = await base(config.tableName).update(recordId, updatedFields);
+        console.log('[DEBUG] Reservation update result:', result.id);
+        results.push({ success: true, id: result.id });
+      } catch (err) {
+        console.error('[ERROR] Failed to update recordId:', recordId, err.message);
+        results.push({ success: false, recordId, error: err.message });
+      }
+    }
+
+    return results;
   } catch (error) {
     console.error(`[ERROR] updateReservations failed: ${error.message}`);
     return { success: false, error: error.message };
