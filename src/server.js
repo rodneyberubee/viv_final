@@ -55,7 +55,7 @@ app.use(express.json());
 
 // ✅ ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
-app.use('/api/dashboard/:restaurantId', dashboardRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
