@@ -1,7 +1,7 @@
 import express from 'express';
 import { getReservations } from '../../utils/dashboard/getReservations.js';
 import { updateReservations } from '../../utils/dashboard/updateReservations.js';
-import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
+import dashboardConfig from '../../utils/dashboard/dashboardConfig.js'; // ✅ fixed import
 
 export const dashboardRouter = express.Router();
 
@@ -20,7 +20,7 @@ dashboardRouter.get('/', async (req, res) => {
   }
 
   try {
-    const reservations = await getReservations(restaurantId); // ✅ FIXED ARGUMENT
+    const reservations = await getReservations(restaurantId);
     return res.status(200).json({ reservations });
   } catch (err) {
     console.error('[ERROR] Failed to get reservations:', err.message);
