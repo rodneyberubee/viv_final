@@ -21,7 +21,13 @@ export async function updateReservations(restaurantId, updatesArray) {
 
     for (const { recordId, updatedFields } of updatesArray) {
       try {
-        const result = await base(config.tableName).update(recordId, updatedFields);
+        // Exclude computed or read-only fields
+        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
+        const filteredFields = Object.fromEntries(
+          Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
+        );
+
+        const result = await base(config.tableName).update(recordId, filteredFields);
         console.log('[DEBUG] Reservation update result:', result.id);
         results.push({ success: true, id: result.id });
       } catch (err) {
