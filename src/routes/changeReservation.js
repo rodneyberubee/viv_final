@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized time parsing
+import { parseDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast for guardrail
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
@@ -51,6 +51,17 @@ export const changeReservation = async (req) => {
   }
 
   const { baseId, tableName, maxReservations, timeZone } = config;
+
+  // ✅ Guardrail: Prevent changing to a past date/time
+  if (isPast(normalizedDate, normalizedTime, timeZone)) {
+    return {
+      status: 400,
+      body: {
+        type: 'reservation.change.error',
+        error: 'cannot_change_to_past'
+      }
+    };
+  }
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
