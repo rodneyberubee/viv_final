@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import dayjs from 'dayjs';
+import { DateTime } from 'luxon';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
 
@@ -75,11 +75,11 @@ export const reservation = async (req) => {
     const { baseId, tableName, maxReservations, futureCutoff } = config;
     const base = airtableClient.base(baseId);
 
-    const now = dayjs();
-    const reservationTime = dayjs(`${date}T${timeSlot}`);
+    const now = DateTime.now().setZone(config.timeZone || 'utc');
+    const reservationTime = DateTime.fromISO(`${date}T${timeSlot}`, { zone: config.timeZone || 'utc' });
     let warningNote = null;
 
-    if (reservationTime.isAfter(now.add(futureCutoff, 'day'))) {
+    if (reservationTime > now.plus({ days: futureCutoff })) {
       const error = {
         type: 'reservation.error',
         error: 'outside_reservation_window'
@@ -87,7 +87,7 @@ export const reservation = async (req) => {
       return { status: 400, body: error };
     }
 
-    if (reservationTime.isBefore(now)) {
+    if (reservationTime < now) {
       warningNote = 'There may have been an issue with your info, can you reverify it? If nothing is wrong you can disregard this message';
     }
 
@@ -120,17 +120,17 @@ export const reservation = async (req) => {
       let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
-        forward = forward.add(15, 'minute');
-        if (isSlotAvailable(forward.format('HH:mm'))) {
-          after = forward.format('HH:mm');
+        forward = forward.plus({ minutes: 15 });
+        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
+          after = forward.toFormat('HH:mm');
           break;
         }
       }
 
       for (let i = 1; i <= maxSteps; i++) {
-        backward = backward.subtract(15, 'minute');
-        if (isSlotAvailable(backward.format('HH:mm'))) {
-          before = backward.format('HH:mm');
+        backward = backward.minus({ minutes: 15 });
+        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
+          before = backward.toFormat('HH:mm');
           break;
         }
       }
