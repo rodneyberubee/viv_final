@@ -1,4 +1,3 @@
-// utils/dateHelpers.js
 import { DateTime } from 'luxon';
 
 /**
@@ -41,6 +40,15 @@ export const parseFlexibleTime = (rawTime, timeZone = 'UTC') => {
  * Get the current DateTime in a given zone.
  */
 export const getCurrentDateTime = (timeZone = 'UTC') => DateTime.now().setZone(timeZone);
+
+/**
+ * Determine if a given date+time is in the past relative to now in the same zone.
+ */
+export const isPast = (date, time, timeZone = 'UTC') => {
+  const now = getCurrentDateTime(timeZone);
+  const dt = parseDateTime(date, time, timeZone);
+  return dt && dt < now;
+};
 
 /**
  * Format DateTime for display or storage.
