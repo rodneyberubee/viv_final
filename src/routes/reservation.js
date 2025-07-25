@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { DateTime } from 'luxon';
+import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Added helper
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
 
@@ -72,11 +72,16 @@ export const reservation = async (req) => {
       return { status: 404, body: error };
     }
 
-    const { baseId, tableName, maxReservations, futureCutoff } = config;
+    const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
     const base = airtableClient.base(baseId);
 
-    const now = DateTime.now().setZone(config.timeZone || 'utc');
-    const reservationTime = DateTime.fromISO(`${date}T${timeSlot}`, { zone: config.timeZone || 'utc' });
+    // ✅ Use dateHelpers for consistent parsing and zone awareness
+    const now = parseDateTime(DateTime.now().toISODate(), DateTime.now().toFormat('HH:mm'), timeZone);
+    const reservationTime = parseDateTime(date, timeSlot, timeZone);
+    if (!reservationTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
+    }
+
     let warningNote = null;
 
     if (reservationTime > now.plus({ days: futureCutoff })) {
