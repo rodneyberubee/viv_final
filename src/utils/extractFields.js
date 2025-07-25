@@ -1,16 +1,24 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import dayjs from 'dayjs';
-import customParseFormat from 'dayjs/plugin/customParseFormat.js';
-dayjs.extend(customParseFormat);
+import { DateTime } from 'luxon';
 
 dotenv.config();
 
 const normalizeDate = (rawDate) => {
   if (!rawDate || typeof rawDate !== 'string') return rawDate;
-  const formats = ['YYYY-MM-DD', 'D MMMM', 'MMMM D', 'D MMM', 'MMM D'];
-  const parsed = dayjs(rawDate, formats, true);
-  return parsed.isValid() ? parsed.year(2025).format('YYYY-MM-DD') : rawDate;
+
+  const formats = ['yyyy-MM-dd', 'd MMMM', 'MMMM d', 'd MMM', 'MMM d'];
+  let parsed;
+
+  // Try each format until one is valid
+  for (const fmt of formats) {
+    parsed = DateTime.fromFormat(rawDate, fmt, { zone: 'utc' });
+    if (parsed.isValid) break;
+  }
+
+  return parsed && parsed.isValid
+    ? parsed.set({ year: 2025 }).toFormat('yyyy-MM-dd')
+    : rawDate;
 };
 
 const normalizeTimeSlot = (rawTime) => {
@@ -19,12 +27,17 @@ const normalizeTimeSlot = (rawTime) => {
   const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
   const withSpace = cleaned.replace(/(AM|PM)/, ' $1');
 
-  const parsed = dayjs(withSpace, ['h:mm A', 'h A', 'H:mm', 'H', 'HH:mm'], true);
-  if (!parsed.isValid()) {
-    return rawTime;
+  const timeFormats = ['h:mm a', 'h a', 'H:mm', 'H', 'HH:mm'];
+  let parsed;
+
+  for (const fmt of timeFormats) {
+    parsed = DateTime.fromFormat(withSpace, fmt, { zone: 'utc' });
+    if (parsed.isValid) break;
   }
 
-  return parsed.format('HH:mm');
+  return parsed && parsed.isValid
+    ? parsed.toFormat('HH:mm')
+    : rawTime;
 };
 
 export const extractFields = async (vivInput, restaurantId) => {
