@@ -41,6 +41,11 @@ export const checkAvailability = async (req) => {
     const normalizedTime = timeSlot.toString().trim();
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
 
+    // Debugging: log what Luxon is parsing
+    console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime });
+    console.log('[DEBUG][checkAvailability] Parsed DateTime:', currentTime?.toISO() || 'Invalid');
+    console.log('[DEBUG][checkAvailability] Now:', new Date().toISOString());
+
     // ✅ Guard against invalid date/time parsing
     if (!currentTime) {
       return {
@@ -54,6 +59,7 @@ export const checkAvailability = async (req) => {
 
     // ✅ Guardrail: Prevent checking past times
     if (isPast(normalizedDate, normalizedTime, timeZone)) {
+      console.warn('[WARN][checkAvailability] Attempted to check a past time slot');
       return {
         status: 400,
         body: {
@@ -146,3 +152,4 @@ export const checkAvailability = async (req) => {
     };
   }
 };
+
