@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import dayjs from 'dayjs';
+import { DateTime } from 'luxon';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
@@ -83,7 +83,8 @@ export const changeReservation = async (req) => {
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (isBlocked || confirmedCount >= maxReservations) {
-      const centerTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+      // Use Luxon to parse date+time with timezone support
+      const centerTime = DateTime.fromISO(`${normalizedDate}T${normalizedTime}`, { zone: config.timeZone || 'utc' });
 
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
@@ -96,18 +97,18 @@ export const changeReservation = async (req) => {
           return !blocked && confirmed < maxReservations;
         };
 
-        let forward = target.clone();
-        let backward = target.clone();
+        let forward = target;
+        let backward = target;
 
         for (let i = 1; i <= maxSteps; i++) {
-          forward = forward.add(15, 'minute');
-          if (!after && isAvailable(forward.format('HH:mm'))) {
-            after = forward.format('HH:mm');
+          forward = forward.plus({ minutes: 15 });
+          if (!after && isAvailable(forward.toFormat('HH:mm'))) {
+            after = forward.toFormat('HH:mm');
           }
 
-          backward = backward.subtract(15, 'minute');
-          if (!before && isAvailable(backward.format('HH:mm'))) {
-            before = backward.format('HH:mm');
+          backward = backward.minus({ minutes: 15 });
+          if (!before && isAvailable(backward.toFormat('HH:mm'))) {
+            before = backward.toFormat('HH:mm');
           }
 
           if (before && after) break;
