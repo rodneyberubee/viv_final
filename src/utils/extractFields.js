@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js';
+import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js'; // ✅ Using centralized helpers
 
 dotenv.config();
 
@@ -78,13 +78,12 @@ export const extractFields = async (vivInput, restaurantId) => {
         if (chatTriggers.some(trigger => lastMsg.includes(trigger))) {
           return { type: 'chat', parsed: {} };
         }
-
         return { type: 'chat', parsed: {} };
       }
 
       let normalizedType = parsed.type;
 
-      // Use new date/time helpers with default UTC
+      // ✅ Use dateHelpers for centralized parsing (default to UTC)
       if (parsed.parsed) {
         if (parsed.parsed.date) {
           parsed.parsed.date = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
@@ -100,6 +99,7 @@ export const extractFields = async (vivInput, restaurantId) => {
         }
       }
 
+      // Adjust type based on completion
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
@@ -121,11 +121,6 @@ export const extractFields = async (vivInput, restaurantId) => {
       }
 
       parsed.type = normalizedType;
-
-      const cc = parsed.parsed?.confirmationCode;
-      if (cc && cc.includes(':')) {
-        // Do nothing (debug removed)
-      }
 
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
