@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { DateTime } from 'luxon';
+import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ New helper import
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
@@ -50,7 +50,7 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations } = config;
+  const { baseId, tableName, maxReservations, timeZone } = config;
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
@@ -83,8 +83,18 @@ export const changeReservation = async (req) => {
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (isBlocked || confirmedCount >= maxReservations) {
-      // Use Luxon to parse date+time with timezone support
-      const centerTime = DateTime.fromISO(`${normalizedDate}T${normalizedTime}`, { zone: config.timeZone || 'utc' });
+      // ✅ Use dateHelpers for parsing date + time with proper timezone
+      const centerTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+
+      if (!centerTime) {
+        return {
+          status: 400,
+          body: {
+            type: 'reservation.change.error',
+            error: 'invalid_date_or_time'
+          }
+        };
+      }
 
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
