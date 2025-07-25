@@ -1,6 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Added helper
+import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized helper
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
@@ -34,14 +34,25 @@ export const checkAvailability = async (req) => {
   }
 
   const { baseId, tableName, maxReservations, timeZone } = config;
-
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
-    const formula = `{dateFormatted} = '${normalizedDate}'`;
+    const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
 
+    // ✅ Guard against invalid date/time parsing
+    if (!currentTime) {
+      return {
+        status: 400,
+        body: {
+          type: 'availability.check.error',
+          error: 'invalid_date_or_time'
+        }
+      };
+    }
+
+    const formula = `{dateFormatted} = '${normalizedDate}'`;
     const allReservations = await airtable(tableName)
       .select({ filterByFormula: formula })
       .all();
@@ -79,36 +90,13 @@ export const checkAvailability = async (req) => {
       return results;
     };
 
-    const matchingSlotReservations = allReservations.filter(r => {
-      const rawTime = r.fields?.timeSlot?.toString().trim();
-      return rawTime === normalizedTime;
-    });
-
-    const isBlocked = matchingSlotReservations.some(r => {
-      const status = (r.fields.status || '').trim().toLowerCase();
-      return status === 'blocked';
-    });
-
-    const confirmedCount = matchingSlotReservations.filter(r => {
-      const status = (r.fields.status || '').trim().toLowerCase();
-      return status === 'confirmed';
-    }).length;
+    const matchingSlotReservations = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = matchingSlotReservations.some(r => (r.fields.status || '').trim().toLowerCase() === 'blocked');
+    const confirmedCount = matchingSlotReservations.filter(r => (r.fields.status || '').trim().toLowerCase() === 'confirmed').length;
 
     const remaining = maxReservations - confirmedCount;
 
     if (isBlocked || remaining <= 0) {
-      // ✅ Use centralized helper for time parsing with zone support
-      const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-      if (!currentTime) {
-        return {
-          status: 400,
-          body: {
-            type: 'availability.check.error',
-            error: 'invalid_date_or_time'
-          }
-        };
-      }
-
       const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
@@ -147,4 +135,3 @@ export const checkAvailability = async (req) => {
     };
   }
 };
-
