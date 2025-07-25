@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { parseDateTime, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized helpers
+import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
 
@@ -83,7 +83,10 @@ export const reservation = async (req) => {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
 
-    let warningNote = null;
+    // ✅ Guardrail: Block past-time reservations
+    if (isPast(date, timeSlot, timeZone)) {
+      return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
+    }
 
     if (reservationTime > now.plus({ days: futureCutoff })) {
       const error = {
@@ -91,10 +94,6 @@ export const reservation = async (req) => {
         error: 'outside_reservation_window'
       };
       return { status: 400, body: error };
-    }
-
-    if (reservationTime < now) {
-      warningNote = 'There may have been an issue with your info, can you reverify it? If nothing is wrong you can disregard this message';
     }
 
     const normalizedDate = date.trim();
@@ -171,8 +170,7 @@ export const reservation = async (req) => {
       name: parsed.name,
       partySize: parsed.partySize,
       timeSlot: parsed.timeSlot,
-      date: parsed.date,
-      ...(warningNote && { note: warningNote })
+      date: parsed.date
     };
 
     return { status: 201, body: payload };
