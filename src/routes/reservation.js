@@ -79,12 +79,18 @@ export const reservation = async (req) => {
     const now = getCurrentDateTime(timeZone);
     const reservationTime = parseDateTime(date, timeSlot, timeZone);
 
+    // Debugging: log parsed values
+    console.log('[DEBUG][reservation] Incoming date/time:', { date, timeSlot });
+    console.log('[DEBUG][reservation] Parsed reservationTime:', reservationTime?.toISO() || 'Invalid');
+    console.log('[DEBUG][reservation] Current time:', now.toISO());
+
     if (!reservationTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
 
     // ✅ Guardrail: Block past-time reservations
     if (isPast(date, timeSlot, timeZone)) {
+      console.warn('[WARN][reservation] Attempted to book past time');
       return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
     }
 
