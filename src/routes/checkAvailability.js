@@ -1,6 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import dayjs from 'dayjs';
+import { DateTime } from 'luxon';
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
@@ -59,8 +59,8 @@ export const checkAvailability = async (req) => {
       let backward = centerTime;
 
       for (let i = 1; i <= maxSteps; i++) {
-        forward = forward.add(15, 'minute');
-        const f = forward.format('HH:mm');
+        forward = forward.plus({ minutes: 15 });
+        const f = forward.toFormat('HH:mm');
         if (isSlotAvailable(f)) {
           results.after = f;
           break;
@@ -68,8 +68,8 @@ export const checkAvailability = async (req) => {
       }
 
       for (let i = 1; i <= maxSteps; i++) {
-        backward = backward.subtract(15, 'minute');
-        const b = backward.format('HH:mm');
+        backward = backward.minus({ minutes: 15 });
+        const b = backward.toFormat('HH:mm');
         if (isSlotAvailable(b)) {
           results.before = b;
           break;
@@ -97,7 +97,7 @@ export const checkAvailability = async (req) => {
     const remaining = maxReservations - confirmedCount;
 
     if (isBlocked || remaining <= 0) {
-      const currentTime = dayjs(`${normalizedDate}T${normalizedTime}`);
+      const currentTime = DateTime.fromISO(`${normalizedDate}T${normalizedTime}`, { zone: config.timeZone || 'utc' });
       const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
