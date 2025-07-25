@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Added helper
+import { parseDateTime, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized helpers
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
 
@@ -76,8 +76,9 @@ export const reservation = async (req) => {
     const base = airtableClient.base(baseId);
 
     // ✅ Use dateHelpers for consistent parsing and zone awareness
-    const now = parseDateTime(DateTime.now().toISODate(), DateTime.now().toFormat('HH:mm'), timeZone);
+    const now = getCurrentDateTime(timeZone);
     const reservationTime = parseDateTime(date, timeSlot, timeZone);
+
     if (!reservationTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
