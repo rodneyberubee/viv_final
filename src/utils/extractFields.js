@@ -1,44 +1,8 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import { DateTime } from 'luxon';
+import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js';
 
 dotenv.config();
-
-const normalizeDate = (rawDate) => {
-  if (!rawDate || typeof rawDate !== 'string') return rawDate;
-
-  const formats = ['yyyy-MM-dd', 'd MMMM', 'MMMM d', 'd MMM', 'MMM d'];
-  let parsed;
-
-  // Try each format until one is valid
-  for (const fmt of formats) {
-    parsed = DateTime.fromFormat(rawDate, fmt, { zone: 'utc' });
-    if (parsed.isValid) break;
-  }
-
-  return parsed && parsed.isValid
-    ? parsed.set({ year: 2025 }).toFormat('yyyy-MM-dd')
-    : rawDate;
-};
-
-const normalizeTimeSlot = (rawTime) => {
-  if (!rawTime || typeof rawTime !== 'string') return rawTime;
-
-  const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
-  const withSpace = cleaned.replace(/(AM|PM)/, ' $1');
-
-  const timeFormats = ['h:mm a', 'h a', 'H:mm', 'H', 'HH:mm'];
-  let parsed;
-
-  for (const fmt of timeFormats) {
-    parsed = DateTime.fromFormat(withSpace, fmt, { zone: 'utc' });
-    if (parsed.isValid) break;
-  }
-
-  return parsed && parsed.isValid
-    ? parsed.toFormat('HH:mm')
-    : rawTime;
-};
 
 export const extractFields = async (vivInput, restaurantId) => {
   const start = Date.now();
@@ -120,20 +84,19 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
+      // Use new date/time helpers with default UTC
       if (parsed.parsed) {
         if (parsed.parsed.date) {
-          parsed.parsed.date = normalizeDate(parsed.parsed.date);
+          parsed.parsed.date = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
         }
         if (parsed.parsed.newDate) {
-          parsed.parsed.newDate = normalizeDate(parsed.parsed.newDate);
+          parsed.parsed.newDate = parseFlexibleDate(parsed.parsed.newDate, 2025, 'UTC');
         }
         if (parsed.parsed.timeSlot) {
-          const original = parsed.parsed.timeSlot;
-          parsed.parsed.timeSlot = normalizeTimeSlot(original);
+          parsed.parsed.timeSlot = parseFlexibleTime(parsed.parsed.timeSlot, 'UTC');
         }
         if (parsed.parsed.newTimeSlot) {
-          const original = parsed.parsed.newTimeSlot;
-          parsed.parsed.newTimeSlot = normalizeTimeSlot(original);
+          parsed.parsed.newTimeSlot = parseFlexibleTime(parsed.parsed.newTimeSlot, 'UTC');
         }
       }
 
