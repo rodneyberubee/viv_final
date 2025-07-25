@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ New helper import
+import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized time parsing
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
@@ -83,9 +83,8 @@ export const changeReservation = async (req) => {
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (isBlocked || confirmedCount >= maxReservations) {
-      // ✅ Use dateHelpers for parsing date + time with proper timezone
+      // ✅ Use helper for safe, time zone–aware parsing
       const centerTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-
       if (!centerTime) {
         return {
           status: 400,
