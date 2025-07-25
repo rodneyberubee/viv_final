@@ -52,8 +52,13 @@ export const changeReservation = async (req) => {
 
   const { baseId, tableName, maxReservations, timeZone } = config;
 
+  // Parse target date/time with enforced normalization for debugging
+  const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+  console.log('[DEBUG][changeReservation] Requested change to:', targetDateTime?.toISO() || 'Invalid');
+  
   // ✅ Guardrail: Prevent changing to a past date/time
   if (isPast(normalizedDate, normalizedTime, timeZone)) {
+    console.warn('[WARN][changeReservation] Attempt to change to a past date/time');
     return {
       status: 400,
       body: {
@@ -94,9 +99,7 @@ export const changeReservation = async (req) => {
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (isBlocked || confirmedCount >= maxReservations) {
-      // ✅ Use helper for safe, time zone–aware parsing
-      const centerTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-      if (!centerTime) {
+      if (!targetDateTime) {
         return {
           status: 400,
           body: {
@@ -137,7 +140,7 @@ export const changeReservation = async (req) => {
         return { before, after };
       };
 
-      const alternatives = findNextAvailableSlots(centerTime);
+      const alternatives = findNextAvailableSlots(targetDateTime);
 
       return {
         status: 409,
