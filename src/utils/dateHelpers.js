@@ -1,0 +1,52 @@
+// utils/dateHelpers.js
+import { DateTime } from 'luxon';
+
+/**
+ * Parse date + time into a Luxon DateTime object in the restaurant's time zone.
+ * @param {string} date - Date string (YYYY-MM-DD)
+ * @param {string} time - Time string (HH:mm)
+ * @param {string} timeZone - IANA time zone (e.g., "America/Los_Angeles")
+ */
+export const parseDateTime = (date, time, timeZone = 'UTC') => {
+  const dt = DateTime.fromISO(`${date}T${time}`, { zone: timeZone });
+  return dt.isValid ? dt : null;
+};
+
+/**
+ * Parse a date from various natural formats and normalize to YYYY-MM-DD.
+ * Used for AI-parsed values in extractFields.
+ */
+export const parseFlexibleDate = (rawDate, year = DateTime.now().year, timeZone = 'UTC') => {
+  if (!rawDate || typeof rawDate !== 'string') return null;
+
+  const formats = ['yyyy-MM-dd', 'd MMMM', 'MMMM d', 'd MMM', 'MMM d'];
+  for (const fmt of formats) {
+    const dt = DateTime.fromFormat(rawDate, fmt, { zone: timeZone });
+    if (dt.isValid) return dt.set({ year }).toFormat('yyyy-MM-dd');
+  }
+  return null;
+};
+
+/**
+ * Parse a time from various natural formats and normalize to HH:mm.
+ */
+export const parseFlexibleTime = (rawTime, timeZone = 'UTC') => {
+  if (!rawTime || typeof rawTime !== 'string') return null;
+
+  const cleaned = rawTime.trim().toUpperCase().replace(/\./g, '').replace(/\s+/g, '');
+  const withSpace = cleaned.replace(/(AM|PM)/, ' $1');
+  const formats = ['h:mm a', 'h a', 'H:mm', 'H', 'HH:mm'];
+
+  for (const fmt of formats) {
+    const dt = DateTime.fromFormat(withSpace, fmt, { zone: timeZone });
+    if (dt.isValid) return dt.toFormat('HH:mm');
+  }
+  return null;
+};
+
+/**
+ * Format a DateTime object for storage or display.
+ */
+export const formatDateTime = (dt, format = 'yyyy-MM-dd HH:mm') => {
+  return dt && dt.isValid ? dt.toFormat(format) : null;
+};
