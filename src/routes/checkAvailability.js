@@ -1,6 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Centralized helper
+import { parseDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
@@ -48,6 +48,17 @@ export const checkAvailability = async (req) => {
         body: {
           type: 'availability.check.error',
           error: 'invalid_date_or_time'
+        }
+      };
+    }
+
+    // ✅ Guardrail: Prevent checking past times
+    if (isPast(normalizedDate, normalizedTime, timeZone)) {
+      return {
+        status: 400,
+        body: {
+          type: 'availability.check.error',
+          error: 'cannot_check_past'
         }
       };
     }
