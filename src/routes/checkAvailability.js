@@ -1,6 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import { DateTime } from 'luxon';
+import { parseDateTime } from '../utils/dateHelpers.js'; // ✅ Added helper
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
@@ -33,7 +33,7 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations } = config;
+  const { baseId, tableName, maxReservations, timeZone } = config;
 
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
@@ -97,7 +97,18 @@ export const checkAvailability = async (req) => {
     const remaining = maxReservations - confirmedCount;
 
     if (isBlocked || remaining <= 0) {
-      const currentTime = DateTime.fromISO(`${normalizedDate}T${normalizedTime}`, { zone: config.timeZone || 'utc' });
+      // ✅ Use centralized helper for time parsing with zone support
+      const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+      if (!currentTime) {
+        return {
+          status: 400,
+          body: {
+            type: 'availability.check.error',
+            error: 'invalid_date_or_time'
+          }
+        };
+      }
+
       const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
@@ -136,3 +147,4 @@ export const checkAvailability = async (req) => {
     };
   }
 };
+
