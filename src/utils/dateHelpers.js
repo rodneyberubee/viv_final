@@ -1,28 +1,34 @@
 import { DateTime } from 'luxon';
 
 /**
- * Parse date + time into a Luxon DateTime object.
+ * Parse date + time into a Luxon DateTime object,
+ * forcing normalization to the restaurant's timezone.
  */
 export const parseDateTime = (date, time, timeZone = 'UTC') => {
-  const dt = DateTime.fromISO(`${date}T${time}`, { zone: timeZone });
+  if (!date || !time) return null;
+  const raw = `${date}T${time}`;
+  // Always reinterpret as restaurant-local wall time
+  const dt = DateTime.fromISO(raw, { setZone: true }).setZone(timeZone, { keepLocalTime: true });
   return dt.isValid ? dt : null;
 };
 
 /**
- * Parse a date from various formats and normalize to YYYY-MM-DD.
+ * Parse a date from various formats and normalize to YYYY-MM-DD,
+ * forcing normalization to the restaurant's timezone.
  */
 export const parseFlexibleDate = (rawDate, year = DateTime.now().year, timeZone = 'UTC') => {
   if (!rawDate || typeof rawDate !== 'string') return null;
   const formats = ['yyyy-MM-dd', 'd MMMM', 'MMMM d', 'd MMM', 'MMM d'];
   for (const fmt of formats) {
-    const dt = DateTime.fromFormat(rawDate, fmt, { zone: timeZone });
+    let dt = DateTime.fromFormat(rawDate, fmt, { setZone: true }).setZone(timeZone, { keepLocalTime: true });
     if (dt.isValid) return dt.set({ year }).toFormat('yyyy-MM-dd');
   }
   return null;
 };
 
 /**
- * Parse a time from multiple input formats and normalize to HH:mm.
+ * Parse a time from multiple input formats and normalize to HH:mm,
+ * forcing normalization to the restaurant's timezone.
  */
 export const parseFlexibleTime = (rawTime, timeZone = 'UTC') => {
   if (!rawTime || typeof rawTime !== 'string') return null;
@@ -30,7 +36,7 @@ export const parseFlexibleTime = (rawTime, timeZone = 'UTC') => {
   const withSpace = cleaned.replace(/(AM|PM)/, ' $1');
   const formats = ['h:mm a', 'h a', 'H:mm', 'H', 'HH:mm'];
   for (const fmt of formats) {
-    const dt = DateTime.fromFormat(withSpace, fmt, { zone: timeZone });
+    let dt = DateTime.fromFormat(withSpace, fmt, { setZone: true }).setZone(timeZone, { keepLocalTime: true });
     if (dt.isValid) return dt.toFormat('HH:mm');
   }
   return null;
