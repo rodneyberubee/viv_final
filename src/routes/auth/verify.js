@@ -1,7 +1,7 @@
-// /routes/auth/verify.js
 import express from 'express';
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken'; // <-- Added for JWT signing
 dotenv.config();
 
 const router = express.Router();
@@ -34,14 +34,21 @@ router.post('/', express.json(), async (req, res) => {
       loginTokenExpires: ''
     });
 
-    // Return restaurant session data (could also issue a signed JWT)
-    const session = {
+    // Prepare payload for JWT
+    const payload = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email,
       name: record.fields.name
     };
 
-    return res.status(200).json({ message: 'login_success', session });
+    // Sign JWT with secret key (expires in 1 day)
+    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+    // Return signed JWT to the client
+    return res.status(200).json({ 
+      message: 'login_success', 
+      token: jwtToken 
+    });
   } catch (err) {
     console.error('[ERROR][verify]', err);
     return res.status(500).json({ error: 'internal_server_error' });
