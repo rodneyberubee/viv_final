@@ -3,8 +3,12 @@ import { getReservations } from '../../utils/dashboard/getReservations.js';
 import { updateReservations } from '../../utils/dashboard/updateReservations.js';
 import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
 import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
+import { requireAuth } from '../../middleware/requireAuth.js'; // ✅ Added middleware
 
 export const dashboardRouter = express.Router();
+
+// ✅ Apply authentication to all dashboard routes
+dashboardRouter.use(requireAuth);
 
 // ✅ GET /api/dashboard/:restaurantId/reservations
 dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
