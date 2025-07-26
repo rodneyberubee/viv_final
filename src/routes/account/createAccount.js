@@ -1,3 +1,4 @@
+// /routes/account/createAccount.js
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -26,10 +27,6 @@ export const createAccount = async (req, res) => {
       return res.status(400).json({ error: 'missing_required_fields' });
     }
 
-    // Generate restaurantId & tableName
-    const restaurantId = name.toLowerCase().replace(/\s+/g, '') + Date.now().toString().slice(-4);
-    const tableName = `tbl_${restaurantId}`;
-
     // Connect to Airtable
     if (!process.env.MASTER_BASE_ID || !process.env.AIRTABLE_API_KEY) {
       console.error('[ENV ERROR] Missing MASTER_BASE_ID or AIRTABLE_API_KEY');
@@ -37,11 +34,8 @@ export const createAccount = async (req, res) => {
     }
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
-    // Insert into restaurantMap
+    // Only include fields Airtable expects (no restaurantId, slug, etc.)
     const fields = {
-      restaurantId,
-      baseId: process.env.MASTER_BASE_ID,
-      tableName,
       name,
       email,
       maxReservations: parseInt(maxReservations) || 10,
@@ -61,10 +55,15 @@ export const createAccount = async (req, res) => {
     const createdId = created[0].id;
     console.log('[DEBUG] Created restaurantMap record:', createdId);
 
+    // Re-fetch the created record to get auto-generated fields (restaurantId, slug, etc.)
+    const createdRecord = await base('restaurantMap').find(createdId);
+    const { restaurantId, slug, tableName } = createdRecord.fields;
+
     return res.status(201).json({
       message: 'account_created',
-      restaurantId,
-      tableName,
+      restaurantId, // formula-generated
+      slug,         // formula-generated
+      tableName,    // existing field
       recordId: createdId
     });
 
