@@ -1,6 +1,6 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import { parseDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast
+import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Added getCurrentDateTime for clearer logs
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
@@ -40,11 +40,13 @@ export const checkAvailability = async (req) => {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+    const now = getCurrentDateTime(timeZone);
 
     // Debugging: log what Luxon is parsing
     console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime });
-    console.log('[DEBUG][checkAvailability] Parsed DateTime:', currentTime?.toISO() || 'Invalid');
-    console.log('[DEBUG][checkAvailability] Now:', new Date().toISOString());
+    console.log('[DEBUG][checkAvailability] Parsed DateTime (restaurant zone):', currentTime?.toISO() || 'Invalid');
+    console.log('[DEBUG][checkAvailability] Now (restaurant zone):', now.toISO());
+    console.log('[DEBUG][checkAvailability] TimeZone used:', timeZone);
 
     // ✅ Guard against invalid date/time parsing
     if (!currentTime) {
@@ -152,4 +154,3 @@ export const checkAvailability = async (req) => {
     };
   }
 };
-
