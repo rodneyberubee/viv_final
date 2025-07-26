@@ -33,19 +33,21 @@ export const checkAvailability = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations, timeZone } = config;
+  const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-    const now = getCurrentDateTime(timeZone);
+    const now = getCurrentDateTime(timeZone).startOf('day'); // Start of today in restaurant's timezone
+    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day'); // Future cutoff at end of day
 
     // Debugging: log what Luxon is parsing
     console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime });
     console.log('[DEBUG][checkAvailability] Parsed DateTime (restaurant zone):', currentTime?.toISO() || 'Invalid');
     console.log('[DEBUG][checkAvailability] Now (restaurant zone):', now.toISO());
+    console.log('[DEBUG][checkAvailability] Cutoff date (end of day):', cutoffDate.toISO());
     console.log('[DEBUG][checkAvailability] TimeZone used:', timeZone);
 
     // ✅ Guard against invalid date/time parsing
@@ -67,6 +69,18 @@ export const checkAvailability = async (req) => {
         body: {
           type: 'availability.check.error',
           error: 'cannot_check_past'
+        }
+      };
+    }
+
+    // ✅ Guardrail: Prevent checking beyond the allowed future cutoff
+    if (currentTime > cutoffDate) {
+      console.warn('[WARN][checkAvailability] Attempted to check beyond futureCutoff');
+      return {
+        status: 400,
+        body: {
+          type: 'availability.check.error',
+          error: 'outside_reservation_window'
         }
       };
     }
