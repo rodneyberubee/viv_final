@@ -37,6 +37,7 @@ router.post('/request', express.json(), async (req, res) => {
       return res.status(404).json({ error: 'email_not_found' });
     }
 
+    const restaurantName = records[0].fields.name || 'Your Restaurant';
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + 15 * 60 * 1000; // 15 min
 
@@ -52,11 +53,12 @@ router.post('/request', express.json(), async (req, res) => {
     await transporter.sendMail({
       from: process.env.SMTP_FROM,
       to: email,
-      subject: 'Your Viv Login Link',
+      subject: `Your Viv Login Link for ${restaurantName}`,
       text: `Click here to login: ${loginUrl}`,
       html: `<p>Click here to login: <a href="${loginUrl}">${loginUrl}</a></p>`
     });
 
+    console.log(`[INFO] Magic link sent to ${email}`);
     return res.status(200).json({ message: 'magic_link_sent' });
   } catch (err) {
     console.error('[ERROR][login.request]', err);
@@ -79,9 +81,17 @@ router.post('/verify', express.json(), async (req, res) => {
     }
 
     const record = records[0];
-    const expiresAt = new Date(record.fields.loginTokenExpires).getTime();
-    if (Date.now() > expiresAt) {
+    const storedToken = record.fields.loginToken;
+    const expiresAtRaw = record.fields.loginTokenExpires;
+    const expiresAt = expiresAtRaw ? new Date(expiresAtRaw).getTime() : 0;
+
+    if (!storedToken || !expiresAt || Date.now() > expiresAt) {
       return res.status(400).json({ error: 'token_expired' });
+    }
+
+    // Use timingSafeEqual for token comparison
+    if (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(storedToken))) {
+      return res.status(400).json({ error: 'invalid_token' });
     }
 
     // Success: Clear token and return session payload
@@ -90,12 +100,13 @@ router.post('/verify', express.json(), async (req, res) => {
       loginTokenExpires: ''
     });
 
-    // Create a session object (you can sign a JWT instead)
+    // Create a session object (could replace with JWT later)
     const session = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email
     };
 
+    console.log(`[INFO] Login successful for ${record.fields.email}`);
     return res.status(200).json({ message: 'login_success', session });
   } catch (err) {
     console.error('[ERROR][login.verify]', err);
