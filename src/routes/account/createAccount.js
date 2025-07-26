@@ -1,7 +1,10 @@
 // /routes/account/createAccount.js
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
+import Stripe from 'stripe';
 dotenv.config();
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 export const createAccount = async (req, res) => {
   console.log('[DEBUG] createAccount called with body:', req.body);
@@ -34,10 +37,11 @@ export const createAccount = async (req, res) => {
     }
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
-    // Only include fields Airtable expects
+    // Only include fields Airtable expects (set status as 'pending' until Stripe payment succeeds)
     const fields = {
       name,
       email,
+      status: 'pending', // <-- new field to track activation
       maxReservations: parseInt(maxReservations) || 10,
       futureCutoff: parseInt(futureCutoff) || 30,
       timeZone: timeZone || 'America/Los_Angeles',
@@ -51,9 +55,27 @@ export const createAccount = async (req, res) => {
     };
 
     console.log('[DEBUG] Creating Airtable record in table: tblSrsq6Tw4YYMWk2 with fields:', fields);
-    const created = await base('tblSrsq6Tw4YYMWk2').create([{ fields }]); // <-- FIX: Using table ID
+    const created = await base('tblSrsq6Tw4YYMWk2').create([{ fields }]);
     const createdId = created[0].id;
-    console.log('[DEBUG] Created restaurantMap record:', createdId);
+    console.log('[DEBUG] Created restaurantMap record (pending):', createdId);
+
+    // Create a Stripe Checkout session for this new account
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      customer_email: email,
+      line_items: [
+        {
+          price: process.env.STRIPE_SUBSCRIPTION_PRICE_ID, // must be set in your Stripe dashboard
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.FRONTEND_URL}/success?account=${createdId}`,
+      cancel_url: `${process.env.FRONTEND_URL}/cancel?account=${createdId}`,
+      metadata: {
+        airtableRecordId: createdId,
+      },
+    });
 
     // Re-fetch the created record to get auto-generated fields
     const createdRecord = await base('tblSrsq6Tw4YYMWk2').find(createdId);
@@ -61,10 +83,11 @@ export const createAccount = async (req, res) => {
 
     return res.status(201).json({
       message: 'account_created',
-      restaurantId, // formula-generated
-      slug,         // formula-generated
-      tableName,    // existing field
-      recordId: createdId
+      restaurantId,
+      slug,
+      tableName,
+      recordId: createdId,
+      checkoutUrl: session.url, // <-- frontend will redirect here for payment
     });
 
   } catch (error) {
