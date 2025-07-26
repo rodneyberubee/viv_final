@@ -34,7 +34,7 @@ export const createAccount = async (req, res) => {
     }
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
-    // Only include fields Airtable expects (no restaurantId, slug, etc.)
+    // Only include fields Airtable expects
     const fields = {
       name,
       email,
@@ -50,13 +50,13 @@ export const createAccount = async (req, res) => {
       sundayOpen, sundayClose
     };
 
-    console.log('[DEBUG] Creating Airtable record with fields:', fields);
-    const created = await base('restaurantMap').create([{ fields }]);
+    console.log('[DEBUG] Creating Airtable record in table: tblSrsq6Tw4YYMWk2 with fields:', fields);
+    const created = await base('tblSrsq6Tw4YYMWk2').create([{ fields }]); // <-- FIX: Using table ID
     const createdId = created[0].id;
     console.log('[DEBUG] Created restaurantMap record:', createdId);
 
-    // Re-fetch the created record to get auto-generated fields (restaurantId, slug, etc.)
-    const createdRecord = await base('restaurantMap').find(createdId);
+    // Re-fetch the created record to get auto-generated fields
+    const createdRecord = await base('tblSrsq6Tw4YYMWk2').find(createdId);
     const { restaurantId, slug, tableName } = createdRecord.fields;
 
     return res.status(201).json({
@@ -68,7 +68,7 @@ export const createAccount = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[ERROR] Failed to create account:', error);
-    return res.status(500).json({ error: 'internal_server_error' });
+    console.error('[ERROR] Failed to create account:', error?.message || error);
+    return res.status(500).json({ error: 'internal_server_error', details: error?.message || error });
   }
 };
