@@ -55,7 +55,8 @@ export const changeReservation = async (req) => {
   // Parse target date/time with enforced normalization for debugging
   const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
   console.log('[DEBUG][changeReservation] Requested change to:', targetDateTime?.toISO() || 'Invalid');
-  
+  console.log('[DEBUG][changeReservation] Using timezone:', timeZone);
+
   // ✅ Guardrail: Prevent changing to a past date/time
   if (isPast(normalizedDate, normalizedTime, timeZone)) {
     console.warn('[WARN][changeReservation] Attempt to change to a past date/time');
