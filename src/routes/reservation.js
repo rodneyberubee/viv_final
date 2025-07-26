@@ -63,13 +63,15 @@ export const reservation = async (req) => {
     const base = airtableClient.base(baseId);
 
     // ✅ Use dateHelpers for consistent parsing and zone awareness
-    const now = getCurrentDateTime(timeZone);
+    const now = getCurrentDateTime(timeZone).startOf('day'); // Start of today in restaurant's timezone
+    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day'); // Future cutoff at end of day
     const reservationTime = parseDateTime(date, timeSlot, timeZone);
 
     // Debugging: log parsed values
     console.log('[DEBUG][reservation] Incoming date/time:', { date, timeSlot });
     console.log('[DEBUG][reservation] Parsed reservationTime:', reservationTime?.toISO() || 'Invalid');
-    console.log('[DEBUG][reservation] Current time:', now.toISO());
+    console.log('[DEBUG][reservation] Current day start:', now.toISO());
+    console.log('[DEBUG][reservation] Cutoff date (end of day):', cutoffDate.toISO());
     console.log('[DEBUG][reservation] TimeZone used:', timeZone);
 
     // Guard: invalid date/time
@@ -83,8 +85,9 @@ export const reservation = async (req) => {
       return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
     }
 
-    // Guardrail: Outside reservation window
-    if (reservationTime > now.plus({ days: futureCutoff })) {
+    // Guardrail: Outside reservation window (rounded to full days)
+    if (reservationTime > cutoffDate) {
+      console.warn('[WARN][reservation] Attempted to book beyond cutoff window');
       return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
     }
 
