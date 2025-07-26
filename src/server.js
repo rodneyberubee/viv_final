@@ -16,7 +16,8 @@ import { cancelReservation } from './routes/cancelReservation.js';
 import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
-import { dashboardRouter } from './routes/dashboard/dashboardRouter.js'; // ✅ Import after
+import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
+import accountRouter from './routes/account/accountRouter.js'; // ✅ Added account router
 
 dotenv.config();
 
@@ -56,6 +57,7 @@ app.use(express.json());
 // ✅ ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/account', accountRouter); // ✅ New route for account-related endpoints
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
