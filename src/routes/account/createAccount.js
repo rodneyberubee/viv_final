@@ -26,10 +26,6 @@ export const createAccount = async (req, res) => {
       return res.status(400).json({ error: 'missing_required_fields' });
     }
 
-    // Generate slug & restaurantId
-    const slug = name.toLowerCase().replace(/\s+/g, '') + Date.now().toString().slice(-4);
-    const restaurantId = slug;
-
     // Connect to Airtable
     if (!process.env.MASTER_BASE_ID || !process.env.AIRTABLE_API_KEY) {
       console.error('[ENV ERROR] Missing MASTER_BASE_ID or AIRTABLE_API_KEY');
@@ -37,16 +33,10 @@ export const createAccount = async (req, res) => {
     }
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
-    // Create tableName for new restaurant
-    const tableName = `tbl_${restaurantId}`;
-
-    // Insert into restaurantMap
+    // Insert into restaurantMap (slug & restaurantId are formulas in Airtable)
     const fields = {
       name,
       email,
-      restaurantId,
-      slug,
-      tableName,
       maxReservations: parseInt(maxReservations) || 10,
       futureCutoff: parseInt(futureCutoff) || 30,
       timeZone: timeZone || 'America/Los_Angeles',
@@ -61,36 +51,19 @@ export const createAccount = async (req, res) => {
 
     console.log('[DEBUG] Creating Airtable record with fields:', fields);
     const created = await base('restaurantMap').create([{ fields }]);
-    console.log('[DEBUG] Created restaurantMap record:', created[0].id);
+    const createdId = created[0].id;
+    console.log('[DEBUG] Created restaurantMap record:', createdId);
 
-    // OPTIONAL: Clone template table
-    try {
-      console.log('[DEBUG] Attempting to clone template table');
-      const templateTable = 'templateReservations'; // existing template table in MASTER_BASE
-      const templateRecords = await base(templateTable).select().all();
-
-      if (templateRecords.length > 0) {
-        await Promise.all(
-          templateRecords.map(record =>
-            base(tableName).create([
-              { fields: { ...record.fields } }
-            ])
-          )
-        );
-        console.log(`[DEBUG] Cloned ${templateRecords.length} template rows into ${tableName}`);
-      } else {
-        console.warn('[WARN] Template table is empty; skipping cloning.');
-      }
-    } catch (cloneErr) {
-      console.error('[ERROR] Failed to clone template table:', cloneErr.message);
-    }
+    // Re-fetch the created record to get the auto-generated slug & restaurantId
+    const createdRecord = await base('restaurantMap').find(createdId);
+    const { restaurantId, slug, tableName } = createdRecord.fields;
 
     return res.status(201).json({
       message: 'account_created',
       restaurantId,
       slug,
       tableName,
-      recordId: created[0].id
+      recordId: createdId
     });
 
   } catch (error) {
