@@ -31,21 +31,17 @@ export const reservation = async (req) => {
 
   let parsed = req.body;
 
+  // Handle stringified userMessage JSON
   if (typeof parsed.userMessage === 'string') {
     try {
       const fallback = JSON.parse(parsed.userMessage);
       parsed = { ...fallback, restaurantId: parsed.restaurantId, route: parsed.route };
     } catch (e) {
-      const error = {
-        type: 'reservation.error',
-        error: 'invalid_json_in_userMessage'
-      };
-      return { status: 400, body: error };
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_json_in_userMessage' } };
     }
   }
 
   const { name, partySize, contactInfo, date, timeSlot } = parsed;
-
   const missing = [];
   if (!name) missing.push('name');
   if (!partySize) missing.push('partySize');
@@ -54,22 +50,13 @@ export const reservation = async (req) => {
   if (!timeSlot) missing.push('timeSlot');
 
   if (missing.length > 0) {
-    const error = {
-      type: 'reservation.error',
-      error: 'missing_required_fields',
-      missing
-    };
-    return { status: 400, body: error };
+    return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing } };
   }
 
   try {
     const config = await loadRestaurantConfig(restaurantId);
     if (!config) {
-      const error = {
-        type: 'reservation.error',
-        error: 'config_not_found'
-      };
-      return { status: 404, body: error };
+      return { status: 404, body: { type: 'reservation.error', error: 'config_not_found' } };
     }
 
     const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
@@ -83,23 +70,22 @@ export const reservation = async (req) => {
     console.log('[DEBUG][reservation] Incoming date/time:', { date, timeSlot });
     console.log('[DEBUG][reservation] Parsed reservationTime:', reservationTime?.toISO() || 'Invalid');
     console.log('[DEBUG][reservation] Current time:', now.toISO());
+    console.log('[DEBUG][reservation] TimeZone used:', timeZone);
 
+    // Guard: invalid date/time
     if (!reservationTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
 
-    // ✅ Guardrail: Block past-time reservations
+    // Guardrail: Block past-time reservations
     if (isPast(date, timeSlot, timeZone)) {
       console.warn('[WARN][reservation] Attempted to book past time');
       return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
     }
 
+    // Guardrail: Outside reservation window
     if (reservationTime > now.plus({ days: futureCutoff })) {
-      const error = {
-        type: 'reservation.error',
-        error: 'outside_reservation_window'
-      };
-      return { status: 400, body: error };
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
     }
 
     const normalizedDate = date.trim();
@@ -126,7 +112,6 @@ export const reservation = async (req) => {
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       let before = null;
       let after = null;
-
       let forward = centerTime;
       let backward = centerTime;
 
@@ -151,18 +136,18 @@ export const reservation = async (req) => {
 
     if (blocked.length > 0 || confirmedCount.length >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime);
-
-      const payload = {
-        type: 'reservation.unavailable',
-        available: false,
-        reason: 'full',
-        remaining: 0,
-        date,
-        timeSlot,
-        alternatives
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: blocked.length > 0 ? 'blocked' : 'full',
+          remaining: 0,
+          date,
+          timeSlot,
+          alternatives
+        }
       };
-
-      return { status: 409, body: payload };
     }
 
     const { confirmationCode } = await createReservation(parsed, config);
@@ -170,22 +155,19 @@ export const reservation = async (req) => {
     // ✨ Send email after successful reservation creation
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
-    const payload = {
-      type: 'reservation.complete',
-      confirmationCode,
-      name: parsed.name,
-      partySize: parsed.partySize,
-      timeSlot: parsed.timeSlot,
-      date: parsed.date
+    return {
+      status: 201,
+      body: {
+        type: 'reservation.complete',
+        confirmationCode,
+        name: parsed.name,
+        partySize: parsed.partySize,
+        timeSlot: parsed.timeSlot,
+        date: parsed.date
+      }
     };
-
-    return { status: 201, body: payload };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
-    const error = {
-      type: 'reservation.error',
-      error: 'internal_server_error'
-    };
-    return { status: 500, body: error };
+    return { status: 500, body: { type: 'reservation.error', error: 'internal_server_error' } };
   }
 };
