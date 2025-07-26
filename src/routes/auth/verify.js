@@ -12,6 +12,11 @@ router.post('/', express.json(), async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'missing_token' });
 
+  if (!process.env.JWT_SECRET) {
+    console.error('[ERROR] Missing JWT_SECRET in environment variables');
+    return res.status(500).json({ error: 'server_config_error' });
+  }
+
   try {
     // Look up the record with this token
     const records = await base('restaurantMap')
@@ -41,13 +46,21 @@ router.post('/', express.json(), async (req, res) => {
       name: record.fields.name
     };
 
-    // Sign JWT with secret key (expires in 1 day)
-    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+    let jwtToken;
+    try {
+      // Sign JWT with secret key (expires in 1 day)
+      jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+    } catch (jwtErr) {
+      console.error('[ERROR][verify] Failed to sign JWT:', jwtErr);
+      return res.status(500).json({ error: 'token_generation_failed' });
+    }
+
+    console.log(`[INFO] JWT issued for restaurant: ${record.fields.restaurantId} (${record.fields.email})`);
 
     // Return signed JWT to the client
     return res.status(200).json({ 
       message: 'login_success', 
-      token: jwtToken 
+      token: `Bearer ${jwtToken}` 
     });
   } catch (err) {
     console.error('[ERROR][verify]', err);
