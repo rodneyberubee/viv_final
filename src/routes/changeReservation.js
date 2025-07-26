@@ -1,5 +1,5 @@
 import Airtable from 'airtable';
-import { parseDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast for guardrail
+import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Added getCurrentDateTime
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
 
@@ -50,7 +50,7 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const { baseId, tableName, maxReservations, timeZone } = config;
+  const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
 
   // Parse target date/time with enforced normalization for debugging
   const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
@@ -65,6 +65,20 @@ export const changeReservation = async (req) => {
       body: {
         type: 'reservation.change.error',
         error: 'cannot_change_to_past'
+      }
+    };
+  }
+
+  // ✅ Guardrail: Prevent changing to a date beyond futureCutoff
+  const now = getCurrentDateTime(timeZone).startOf('day'); 
+  const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
+  if (targetDateTime > cutoffDate) {
+    console.warn('[WARN][changeReservation] Attempt to change beyond futureCutoff');
+    return {
+      status: 400,
+      body: {
+        type: 'reservation.change.error',
+        error: 'outside_reservation_window'
       }
     };
   }
