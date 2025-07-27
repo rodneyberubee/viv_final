@@ -3,7 +3,7 @@ import { getReservations } from '../../utils/dashboard/getReservations.js';
 import { updateReservations } from '../../utils/dashboard/updateReservations.js';
 import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
 import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
-import { requireAuth } from '../../middleware/requireAuth.js'; // ✅ Auth middleware
+import { requireAuth } from '../../../middleware/requireAuth.js'; // ✅ Fixed path (middleware is adjacent to src)
 
 export const dashboardRouter = express.Router();
 
