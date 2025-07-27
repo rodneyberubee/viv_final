@@ -15,7 +15,8 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Step 1: Request login (send magic link)
-router.post('/login', express.json(), async (req, res) => {
+// Flattened to '/' so it works at POST /api/auth/login
+router.post('/', express.json(), async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'missing_email' });
 
@@ -53,6 +54,12 @@ router.post('/login', express.json(), async (req, res) => {
     console.error('[ERROR][login.request]', err);
     return res.status(500).json({ error: 'internal_server_error' });
   }
+});
+
+// Backward compatibility alias for POST /api/auth/login/request
+router.post('/request', (req, res, next) => {
+  req.url = '/';
+  next();
 });
 
 // Step 2: Verify token (issue JWT)
