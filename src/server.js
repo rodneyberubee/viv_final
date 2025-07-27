@@ -18,7 +18,7 @@ import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
 import accountRouter from './routes/account/accountRouter.js'; 
-import loginRouter from './routes/auth/login.js'; // ✅ Login & verify combined
+import authRouter from './routes/auth/authRouter.js'; // ✅ Combined auth routes
 
 dotenv.config();
 
@@ -42,7 +42,7 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
 
@@ -55,7 +55,7 @@ app.use(express.json());
 app.use('/api/askViv/:restaurantId', askVivRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/account', accountRouter); 
-app.use('/api/auth/login', loginRouter); // ✅ handles /request & /verify
+app.use('/api/auth', authRouter); // ✅ Now handles /login and /verify cleanly
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
