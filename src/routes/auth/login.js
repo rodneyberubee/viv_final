@@ -15,7 +15,6 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Step 1: Request login (send magic link)
-// Flattened to '/' so it works at POST /api/auth/login
 router.post('/', express.json(), async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'missing_email' });
@@ -30,23 +29,30 @@ router.post('/', express.json(), async (req, res) => {
       return res.status(404).json({ error: 'email_not_found' });
     }
 
+    const record = records[0];
+    const restaurantId = record.fields.restaurantId;
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
 
     // Save token + expiry in Airtable
-    await base('restaurantMap').update(records[0].id, {
+    await base('restaurantMap').update(record.id, {
       loginToken: token,
       loginTokenExpires: new Date(expiresAt).toISOString()
     });
 
-    const loginUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
+    // Build link to the dynamic dashboard page
+    const loginUrl = `${process.env.FRONTEND_URL}/dashboard/${restaurantId}?token=${token}`;
 
     // Send email using Resend
     await resend.emails.send({
       from: process.env.RESEND_FROM,
       to: email,
-      subject: 'Your Viv Login Link',
-      html: `<p>Click here to log in: <a href="${loginUrl}">${loginUrl}</a></p>`
+      subject: 'Your Viv Dashboard Login Link',
+      html: `
+        <p>Click below to securely access your Viv dashboard:</p>
+        <p><a href="${loginUrl}" style="display:inline-block;padding:10px 15px;background:#007BFF;color:#fff;text-decoration:none;border-radius:5px;">Access Dashboard</a></p>
+        <p>Or copy this link into your browser: ${loginUrl}</p>
+      `
     });
 
     return res.status(200).json({ message: 'magic_link_sent' });
