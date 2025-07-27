@@ -17,23 +17,21 @@ import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
-import accountRouter from './routes/account/accountRouter.js'; // ✅ Account routes
-import loginRouter from './routes/auth/login.js'; // ✅ Login route
-import verifyRouter from './routes/auth/verify.js'; // ✅ Verify route
+import accountRouter from './routes/account/accountRouter.js'; 
+import loginRouter from './routes/auth/login.js'; // ✅ Login & verify combined
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ✅ Replace default cors() with real config
+// CORS config
 const allowedOrigins = [
   'http://localhost:3000',
   'https://vivaitable.com',
   'https://hoppscotch.io',
   'https://www.vivaitable.com'
 ];
-
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
@@ -49,19 +47,15 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// ✅ Handle preflight requests (CORS)
 app.options('*', cors(corsOptions));
-
 app.use(morgan('dev'));
 app.use(express.json());
 
-// ✅ ROUTES
+// ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/account', accountRouter); 
-app.use('/api/auth/login', loginRouter); // ✅ New login endpoint
-app.use('/api/auth/verify', verifyRouter); // ✅ New verify endpoint
+app.use('/api/auth/login', loginRouter); // ✅ handles /request & /verify
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
