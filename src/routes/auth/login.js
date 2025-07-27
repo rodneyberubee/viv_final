@@ -1,9 +1,9 @@
-// /routes/auth/login.js
 import express from 'express';
 import crypto from 'crypto';
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
 import { Resend } from 'resend';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 const router = express.Router();
@@ -15,7 +15,7 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Step 1: Request login (send magic link)
-router.post('/request', express.json(), async (req, res) => {
+router.post('/login', express.json(), async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'missing_email' });
 
@@ -30,7 +30,7 @@ router.post('/request', express.json(), async (req, res) => {
     }
 
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 min
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
 
     // Save token + expiry in Airtable
     await base('restaurantMap').update(records[0].id, {
@@ -38,14 +38,14 @@ router.post('/request', express.json(), async (req, res) => {
       loginTokenExpires: new Date(expiresAt).toISOString()
     });
 
-    const loginUrl = `${process.env.FRONTEND_URL}/login?token=${token}`;
+    const loginUrl = `${process.env.FRONTEND_URL}/verify?token=${token}`;
 
     // Send email using Resend
     await resend.emails.send({
       from: process.env.RESEND_FROM,
       to: email,
       subject: 'Your Viv Login Link',
-      html: `<p>Click here to login: <a href="${loginUrl}">${loginUrl}</a></p>`
+      html: `<p>Click here to log in: <a href="${loginUrl}">${loginUrl}</a></p>`
     });
 
     return res.status(200).json({ message: 'magic_link_sent' });
@@ -55,7 +55,7 @@ router.post('/request', express.json(), async (req, res) => {
   }
 });
 
-// Step 2: Verify token
+// Step 2: Verify token (issue JWT)
 router.post('/verify', express.json(), async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'missing_token' });
@@ -81,12 +81,16 @@ router.post('/verify', express.json(), async (req, res) => {
       loginTokenExpires: ''
     });
 
-    const session = {
+    // Prepare JWT payload
+    const payload = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email
     };
 
-    return res.status(200).json({ message: 'login_success', session });
+    // Sign a JWT (valid for 1 day)
+    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+    return res.status(200).json({ message: 'login_success', token: jwtToken });
   } catch (err) {
     console.error('[ERROR][login.verify]', err);
     return res.status(500).json({ error: 'internal_server_error' });
