@@ -38,7 +38,7 @@ export const createAccount = async (req, res) => {
     const fields = {
       name,
       email,
-      status: 'pending',
+      status: 'active',
       maxReservations: parseInt(maxReservations) || 10,
       futureCutoff: parseInt(futureCutoff) || 30,
       timeZone: timeZone || 'America/Los_Angeles',
@@ -54,7 +54,7 @@ export const createAccount = async (req, res) => {
     console.log('[DEBUG] Creating Airtable record in table: tblSrsq6Tw4YYMWk2 with fields:', fields);
     const created = await base('tblSrsq6Tw4YYMWk2').create([{ fields }]);
     const createdId = created[0].id;
-    console.log('[DEBUG] Created restaurantMap record (pending):', createdId);
+    console.log('[DEBUG] Created restaurantMap record (active):', createdId);
 
     return res.status(201).json({
       message: 'account_created',
