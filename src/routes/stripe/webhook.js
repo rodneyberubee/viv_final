@@ -3,6 +3,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
+import { createReservationTable } from '../../helpers/createReservationTable.js'; // NEW: helper import
 
 dotenv.config();
 const router = express.Router();
@@ -43,7 +44,7 @@ router.post(
         return res.status(200).send('No action taken.');
       }
 
-      // Update Airtable (mark account as paid/active)
+      // Update Airtable (mark account as paid/active & create table)
       try {
         const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
           .base(process.env.MASTER_BASE_ID);
@@ -57,12 +58,30 @@ router.post(
         if (records.length === 0) {
           console.warn('[STRIPE WEBHOOK] No matching account found for email:', customerEmail);
         } else {
-          await base('restaurantMap').update(records[0].id, {
+          const recordId = records[0].id;
+          const restaurantId = records[0].fields.restaurantId || restaurantName.toLowerCase().replace(/\s+/g, '');
+          
+          // 1. Create new reservations table
+          let newTableId;
+          try {
+            newTableId = await createReservationTable(
+              process.env.MASTER_BASE_ID,
+              `${restaurantId}_reservations`
+            );
+            console.log('[STRIPE WEBHOOK] Created new reservations table:', newTableId);
+          } catch (err) {
+            console.error('[STRIPE WEBHOOK] Failed to create reservations table:', err);
+            return res.status(500).send('Failed to create reservations table');
+          }
+
+          // 2. Update the restaurantMap record
+          await base('restaurantMap').update(recordId, {
             status: 'active',
             subscriptionId: session.subscription || '',
-            paymentDate: new Date().toISOString()
+            paymentDate: new Date().toISOString(),
+            tableId: newTableId
           });
-          console.log('[STRIPE WEBHOOK] Updated account to active for:', customerEmail);
+          console.log('[STRIPE WEBHOOK] Updated account to active with tableId for:', customerEmail);
         }
       } catch (airtableErr) {
         console.error('[STRIPE WEBHOOK] Failed to update Airtable:', airtableErr);
