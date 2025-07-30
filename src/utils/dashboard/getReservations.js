@@ -17,8 +17,14 @@ export async function getReservations(restaurantId) {
       return [];
     }
 
+    // 🔄 Filter by restaurantId to prevent cross-restaurant data fetch
+    const filterByFormula = `{restaurantId} = '${restaurantId}'`;
+
     const records = await base(config.tableName)
-      .select({ sort: [{ field: 'date' }, { field: 'timeSlot' }] })
+      .select({
+        filterByFormula,
+        sort: [{ field: 'date' }, { field: 'timeSlot' }]
+      })
       .all();
 
     console.log(`[DEBUG] Fetched ${records.length} reservation(s) for ${restaurantId}`);
