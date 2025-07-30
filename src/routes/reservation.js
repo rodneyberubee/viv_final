@@ -6,7 +6,7 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // âœ
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
 export const createReservation = async (parsed, config) => {
-  const { name, partySize, contactInfo, date, timeSlot } = parsed;
+  const { name, partySize, contactInfo, date, timeSlot, restaurantId } = parsed; // <-- include restaurantId
   const { baseId, tableName } = config;
 
   const base = airtableClient.base(baseId);
@@ -18,6 +18,7 @@ export const createReservation = async (parsed, config) => {
     contactInfo,
     date,
     timeSlot,
+    restaurantId, // <-- store it in Airtable
     rawConfirmationCode: confirmationCode,
     status: 'confirmed'
   };
@@ -35,10 +36,12 @@ export const reservation = async (req) => {
   if (typeof parsed.userMessage === 'string') {
     try {
       const fallback = JSON.parse(parsed.userMessage);
-      parsed = { ...fallback, restaurantId: parsed.restaurantId, route: parsed.route };
+      parsed = { ...fallback, restaurantId: restaurantId, route: parsed.route }; // <-- ensure restaurantId is carried over
     } catch (e) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_json_in_userMessage' } };
     }
+  } else {
+    parsed.restaurantId = restaurantId; // <-- add it for non-stringified bodies
   }
 
   const { name, partySize, contactInfo, date, timeSlot } = parsed;
@@ -153,7 +156,7 @@ export const reservation = async (req) => {
       };
     }
 
-    const { confirmationCode } = await createReservation(parsed, config);
+    const { confirmationCode } = await createReservation(parsed, config); // <-- now includes restaurantId
 
     // âœ¨ Send email after successful reservation creation
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
