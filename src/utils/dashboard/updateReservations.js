@@ -27,6 +27,17 @@ export async function updateReservations(restaurantId, updatesArray) {
           Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
         );
 
+        // 🔄 Force the restaurantId to remain correct
+        filteredFields.restaurantId = restaurantId;
+
+        // (Optional) Fetch the record first to ensure it belongs to this restaurant
+        const existingRecord = await base(config.tableName).find(recordId);
+        if (existingRecord.fields.restaurantId !== restaurantId) {
+          console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
+          results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
+          continue;
+        }
+
         const result = await base(config.tableName).update(recordId, filteredFields);
         console.log('[DEBUG] Reservation update result:', result.id);
         results.push({ success: true, id: result.id });
