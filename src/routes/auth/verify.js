@@ -8,7 +8,6 @@ dotenv.config();
 const router = express.Router();
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
-// Verify login token and issue JWT
 router.post('/', express.json(), async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'missing_token' });
@@ -19,7 +18,6 @@ router.post('/', express.json(), async (req, res) => {
   }
 
   try {
-    // Look up the record with this token
     const records = await base('restaurantMap')
       .select({ filterByFormula: `{loginToken} = '${token}'` })
       .firstPage();
@@ -31,18 +29,21 @@ router.post('/', express.json(), async (req, res) => {
 
     const record = records[0];
     const expiresAt = new Date(record.fields.loginTokenExpires).getTime();
-    if (!expiresAt || Date.now() > expiresAt) {
+    const now = Date.now();
+
+    console.log(`[DEBUG] Now: ${now}, ExpiresAt: ${expiresAt}, Diff: ${expiresAt - now}ms`);
+
+    if (!expiresAt || now > expiresAt) {
       console.warn(`[VERIFY] Expired token for ${record.fields.email}`);
       return res.status(400).json({ error: 'token_expired' });
     }
 
-    // Clear token fields (single-use)
+    // Invalidate the token (single-use)
     await base('restaurantMap').update(record.id, {
       loginToken: '',
       loginTokenExpires: ''
     });
 
-    // Prepare payload for JWT
     const payload = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email,
@@ -51,16 +52,15 @@ router.post('/', express.json(), async (req, res) => {
 
     let jwtToken;
     try {
-      // Sign JWT with secret key (expires in 1 day)
       jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+      console.log(`[AUTH] JWT created with exp: ${new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()}`);
     } catch (jwtErr) {
       console.error('[JWT ERROR] Failed to sign token:', jwtErr);
       return res.status(500).json({ error: 'token_generation_failed' });
     }
 
-    console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email})`);
+    console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email}) using secret: ${process.env.JWT_SECRET.slice(0, 6)}***`);
 
-    // Return signed JWT to the client (no Bearer prefix; frontend will add it for Authorization headers)
     return res.status(200).json({ 
       message: 'login_success', 
       token: jwtToken 
