@@ -1,12 +1,12 @@
 import Airtable from 'airtable';
-import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Added getCurrentDateTime
+import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
-import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 export const changeReservation = async (req) => {
   const { restaurantId } = req.params;
   if (!restaurantId) {
-    console.error('[ERROR] restaurantId is missing from req.body');
+    console.error('[ERROR] restaurantId is missing from req.params');
     return {
       status: 400,
       body: {
@@ -51,6 +51,7 @@ export const changeReservation = async (req) => {
   }
 
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
+  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   // Parse target date/time with enforced normalization for debugging
   const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
@@ -83,12 +84,11 @@ export const changeReservation = async (req) => {
     };
   }
 
-  const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
-
   try {
+    // 🔄 Filter by confirmationCode **and** restaurantId
     const match = await airtable(tableName)
       .select({
-        filterByFormula: `{rawConfirmationCode} = '${normalizedCode}'`,
+        filterByFormula: `AND({rawConfirmationCode} = '${normalizedCode}', {restaurantId} = '${restaurantId}')`,
       })
       .firstPage();
 
@@ -103,9 +103,10 @@ export const changeReservation = async (req) => {
       };
     }
 
+    // 🔄 Filter by date **and** restaurantId
     const allForDate = await airtable(tableName)
       .select({
-        filterByFormula: `{dateFormatted} = '${normalizedDate}'`,
+        filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
       })
       .all();
 
@@ -166,14 +167,17 @@ export const changeReservation = async (req) => {
           remaining: Math.max(0, maxReservations - confirmedCount),
           date: normalizedDate,
           timeSlot: normalizedTime,
-          alternatives
+          alternatives,
+          restaurantId // <-- include in response
         }
       };
     }
 
+    // 🔄 Update with new date/time AND ensure restaurantId is written
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
+      restaurantId // <-- ensure it’s on the record
     });
 
     // ✅ Trigger confirmation email for update
@@ -189,7 +193,8 @@ export const changeReservation = async (req) => {
         type: 'reservation.changed',
         confirmationCode: normalizedCode,
         newDate: normalizedDate,
-        newTimeSlot: normalizedTime
+        newTimeSlot: normalizedTime,
+        restaurantId // <-- include for context
       }
     };
 
