@@ -9,7 +9,8 @@ export const checkAvailability = async (req) => {
   if (!date || !timeSlot) {
     const parsed = {
       date: date || null,
-      timeSlot: timeSlot || null
+      timeSlot: timeSlot || null,
+      restaurantId // <-- include for context
     };
 
     return {
@@ -44,7 +45,7 @@ export const checkAvailability = async (req) => {
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day'); // Future cutoff at end of day
 
     // Debugging: log what Luxon is parsing
-    console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime });
+    console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime, restaurantId });
     console.log('[DEBUG][checkAvailability] Parsed DateTime (restaurant zone):', currentTime?.toISO() || 'Invalid');
     console.log('[DEBUG][checkAvailability] Now (restaurant zone):', now.toISO());
     console.log('[DEBUG][checkAvailability] Cutoff date (end of day):', cutoffDate.toISO());
@@ -85,7 +86,8 @@ export const checkAvailability = async (req) => {
       };
     }
 
-    const formula = `{dateFormatted} = '${normalizedDate}'`;
+    // 🔄 Updated formula to also filter by restaurantId
+    const formula = `AND({restaurantId} = '${restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName)
       .select({ filterByFormula: formula })
       .all();
@@ -140,6 +142,7 @@ export const checkAvailability = async (req) => {
           reason: isBlocked ? 'blocked' : 'full',
           date: normalizedDate,
           timeSlot: normalizedTime,
+          restaurantId, // <-- add context
           alternatives,
           remaining: 0
         }
@@ -153,6 +156,7 @@ export const checkAvailability = async (req) => {
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
+        restaurantId, // <-- add context
         remaining
       }
     };
