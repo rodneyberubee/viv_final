@@ -1,24 +1,35 @@
-// /middleware/requireAuth.js
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 dotenv.config();
 
 export const requireAuth = (req, res, next) => {
-  // Look for the "Authorization" header
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'unauthorized' });
+    console.warn('[AUTH] Missing or malformed Authorization header:', authHeader);
+    return res.status(401).json({ error: 'unauthorized', detail: 'Missing or malformed Authorization header' });
   }
 
   const token = authHeader.split(' ')[1];
+  if (!token) {
+    console.warn('[AUTH] No token provided after Bearer.');
+    return res.status(401).json({ error: 'unauthorized', detail: 'No token provided' });
+  }
 
   try {
-    // Verify the token using our secret key
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // Add decoded user info to the request
-    next(); // Pass control to the next handler
+    console.log('[AUTH] Token verified for:', decoded.restaurantId || 'unknown', decoded.email || 'no-email');
+    req.user = decoded; // Attach user payload for downstream routes
+    next();
   } catch (err) {
-    console.error('[AUTH ERROR] Invalid token:', err.message);
-    return res.status(401).json({ error: 'invalid_or_expired_token' });
+    if (err.name === 'TokenExpiredError') {
+      console.error('[AUTH ERROR] Token expired:', err.message);
+      return res.status(401).json({ error: 'token_expired', detail: 'JWT has expired' });
+    }
+    if (err.name === 'JsonWebTokenError') {
+      console.error('[AUTH ERROR] Invalid token signature or format:', err.message);
+      return res.status(401).json({ error: 'invalid_token', detail: 'Invalid token signature or format' });
+    }
+    console.error('[AUTH ERROR] Unexpected JWT error:', err.message);
+    return res.status(401).json({ error: 'invalid_or_expired_token', detail: 'Token verification failed' });
   }
 };
