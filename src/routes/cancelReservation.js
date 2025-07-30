@@ -1,6 +1,6 @@
 import Airtable from 'airtable';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
-import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✅ Added
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
@@ -33,7 +33,8 @@ export const cancelReservation = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    const formula = `{rawConfirmationCode} = '${confirmationCode}'`;
+    // 🔄 Add restaurantId to ensure only the correct restaurant's reservations are canceled
+    const formula = `AND({rawConfirmationCode} = '${confirmationCode}', {restaurantId} = '${restaurantId}')`;
 
     const records = await airtable(tableName)
       .select({
@@ -48,7 +49,8 @@ export const cancelReservation = async (req) => {
         status: 404,
         body: {
           type: 'reservation.cancel.not_found',
-          confirmationCode
+          confirmationCode,
+          restaurantId
         }
       };
     }
@@ -69,6 +71,7 @@ export const cancelReservation = async (req) => {
       body: {
         type: 'reservation.cancelled',
         confirmationCode,
+        restaurantId, // <-- included for consistency
         canceledReservation: {
           name: reservation.fields.name,
           date: reservation.fields.date,
