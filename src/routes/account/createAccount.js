@@ -35,11 +35,13 @@ export const createAccount = async (req, res) => {
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
       .base(process.env.MASTER_BASE_ID);
 
-    // Only include fields Airtable expects (set status as 'active')
+    // Only include fields Airtable expects (set status as 'pending')
     const fields = {
       name,
       email,
-      status: 'active', // automation will detect and trigger table creation
+      baseId: 'appQjL2eba0FcgHCk',
+      tableName: 'tblkUkee98kONNz8D',
+      status: 'pending', 
       maxReservations: parseInt(maxReservations) || 10,
       futureCutoff: parseInt(futureCutoff) || 30,
       timeZone: timeZone || 'America/Los_Angeles',
