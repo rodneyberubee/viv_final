@@ -32,10 +32,21 @@ export const dashboardConfig = async (restaurantId) => {
 
     const fields = records[0].fields;
 
+    // Normalize critical fields
+    const cleanRestaurantId = (fields.restaurantId || '').trim();
+    const baseId = fields.baseId?.trim();
+    const tableName = fields.tableName?.trim();
+
+    if (!cleanRestaurantId || !baseId || !tableName) {
+      console.error('[ERROR] dashboardConfig: Missing critical fields (restaurantId, baseId, tableName)');
+      return null;
+    }
+
     const config = {
-      restaurantId: fields.restaurantId,
-      baseId: fields.baseId,
-      tableName: fields.tableName,
+      restaurantId: cleanRestaurantId,
+      baseId,
+      tableName,
+      tableId: fields.tableId || null, // optional new field for table mapping
       maxReservations: fields.maxReservations,
       cutoffTime: fields.cutoffTime,
       futureCutoff: fields.futureCutoff,
