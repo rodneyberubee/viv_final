@@ -14,24 +14,27 @@ dashboardRouter.use(requireAuth);
 const enforceRestaurantAccess = (req, res) => {
   const { restaurantId } = req.params;
   if (!restaurantId) {
-    return { error: res.status(400).json({ error: 'Missing restaurantId in URL' }) };
+    res.status(400).json({ error: 'Missing restaurantId in URL' });
+    return null;
   }
   if (req.user.restaurantId !== restaurantId) {
     console.warn(`[AUTH] Forbidden access attempt by ${req.user.email} for ${restaurantId}`);
-    return { error: res.status(403).json({ error: 'forbidden' }) };
+    res.status(403).json({ error: 'forbidden' });
+    return null;
   }
-  return { restaurantId };
+  return restaurantId;
 };
 
 // ✅ GET /api/dashboard/:restaurantId/reservations
 dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
   console.log('[DEBUG] dashboardRouter GET /reservations called');
-  const { error, restaurantId } = enforceRestaurantAccess(req, res);
-  if (error) return;
+  const restaurantId = enforceRestaurantAccess(req, res);
+  if (!restaurantId) return;
 
   try {
     const reservations = await getReservations(restaurantId);
-    return res.status(200).json({ reservations });
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({ reservations, user: req.user });
   } catch (err) {
     console.error('[ERROR] Failed to get reservations:', err);
     return res.status(500).json({ error: 'Failed to fetch reservations' });
@@ -41,8 +44,8 @@ dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
 // ✅ POST /api/dashboard/:restaurantId/updateReservation
 dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
   console.log('[DEBUG] dashboardRouter POST /updateReservation called');
-  const { error, restaurantId } = enforceRestaurantAccess(req, res);
-  if (error) return;
+  const restaurantId = enforceRestaurantAccess(req, res);
+  if (!restaurantId) return;
 
   const updates = req.body;
   if (!updates || !Array.isArray(updates)) {
@@ -51,6 +54,7 @@ dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
 
   try {
     const result = await updateReservations(restaurantId, updates);
+    res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result });
   } catch (err) {
     console.error('[ERROR] Failed to update reservations:', err);
@@ -61,15 +65,16 @@ dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
 // ✅ GET /api/dashboard/:restaurantId/config
 dashboardRouter.get('/:restaurantId/config', async (req, res) => {
   console.log('[DEBUG] dashboardRouter GET /config called');
-  const { error, restaurantId } = enforceRestaurantAccess(req, res);
-  if (error) return;
+  const restaurantId = enforceRestaurantAccess(req, res);
+  if (!restaurantId) return;
 
   try {
     const config = await dashboardConfig(restaurantId);
     if (!config) {
       return res.status(404).json({ error: 'Config not found' });
     }
-    return res.status(200).json(config);
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({ config, user: req.user });
   } catch (err) {
     console.error('[ERROR] Failed to load config:', err);
     return res.status(500).json({ error: 'Failed to fetch config' });
@@ -79,8 +84,8 @@ dashboardRouter.get('/:restaurantId/config', async (req, res) => {
 // ✅ POST /api/dashboard/:restaurantId/updateConfig
 dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
   console.log('[DEBUG] dashboardRouter POST /updateConfig called');
-  const { error, restaurantId } = enforceRestaurantAccess(req, res);
-  if (error) return;
+  const restaurantId = enforceRestaurantAccess(req, res);
+  if (!restaurantId) return;
 
   const updates = req.body;
 
@@ -95,7 +100,7 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
 
     const result = await base('restaurantMap').update(records[0].id, updates);
     console.log('[DEBUG] Config update result ID:', result.id);
-
+    res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result });
   } catch (err) {
     console.error('[ERROR] Failed to update config:', err);
