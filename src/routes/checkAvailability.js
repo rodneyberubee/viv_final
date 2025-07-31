@@ -92,11 +92,26 @@ export const checkAvailability = async (req) => {
       .select({ filterByFormula: formula })
       .all();
 
+    // 🔹 PRE-FILTER: remove blocked, past, or beyond cutoff
+    const validReservations = allReservations.filter(r => {
+      const slot = r.fields.timeSlot?.trim();
+      const status = r.fields.status?.trim().toLowerCase();
+      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
+      return (
+        status !== 'blocked' &&
+        slotDateTime &&
+        !isPast(normalizedDate, slot, timeZone) &&
+        slotDateTime <= cutoffDate
+      );
+    });
+
+    console.log('[DEBUG][checkAvailability] Total fetched reservations:', allReservations.length);
+    console.log('[DEBUG][checkAvailability] Valid reservations after filtering:', validReservations.length);
+
     const isSlotAvailable = (time) => {
-      const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time);
-      const isBlocked = matching.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+      const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time);
       const confirmedCount = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed').length;
-      return !isBlocked && confirmedCount < maxReservations;
+      return confirmedCount < maxReservations;
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
@@ -125,13 +140,12 @@ export const checkAvailability = async (req) => {
       return results;
     };
 
-    const matchingSlotReservations = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const isBlocked = matchingSlotReservations.some(r => (r.fields.status || '').trim().toLowerCase() === 'blocked');
+    const matchingSlotReservations = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = matchingSlotReservations.filter(r => (r.fields.status || '').trim().toLowerCase() === 'confirmed').length;
 
     const remaining = maxReservations - confirmedCount;
 
-    if (isBlocked || remaining <= 0) {
+    if (remaining <= 0) {
       const alternatives = findNextAvailableSlots(currentTime, 96);
 
       return {
@@ -139,7 +153,7 @@ export const checkAvailability = async (req) => {
         body: {
           type: 'availability.unavailable',
           available: false,
-          reason: isBlocked ? 'blocked' : 'full',
+          reason: 'full',
           date: normalizedDate,
           timeSlot: normalizedTime,
           restaurantId, // <-- add context
