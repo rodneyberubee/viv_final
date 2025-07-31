@@ -18,8 +18,9 @@ import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
 import accountRouter from './routes/account/accountRouter.js';
-import loginRouter from './routes/auth/login.js'; // ✅ Handles /request
-import verifyRouter from './routes/auth/verify.js'; // ✅ Handles /verify
+import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
+import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
+import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
 
 dotenv.config();
 
@@ -56,8 +57,9 @@ app.use(express.json());
 app.use('/api/askViv/:restaurantId', askVivRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/account', accountRouter);
-app.use('/api/auth/login', loginRouter);   // ✅ POST /request
-app.use('/api/auth/verify', verifyRouter); // ✅ POST /verify
+app.use('/api/auth/login', loginRouter);     // ✅ POST /request
+app.use('/api/auth/verify', verifyRouter);   // ✅ POST /verify
+app.use('/api/auth/refresh', refreshRouter); // ✅ POST /refresh
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
