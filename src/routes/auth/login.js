@@ -73,22 +73,29 @@ router.post('/verify', express.json(), async (req, res) => {
   const { token } = req.body;
   if (!token) return res.status(400).json({ error: 'missing_token' });
 
+  if (!process.env.JWT_SECRET) {
+    console.error('[CONFIG ERROR] Missing JWT_SECRET in environment variables');
+    return res.status(500).json({ error: 'server_config_error' });
+  }
+
   try {
     const records = await base('restaurantMap')
       .select({ filterByFormula: `{loginToken} = '${token}'` })
       .firstPage();
 
     if (records.length === 0) {
+      console.warn('[VERIFY] Invalid token attempt:', token);
       return res.status(400).json({ error: 'invalid_token' });
     }
 
     const record = records[0];
     const expiresAt = new Date(record.fields.loginTokenExpires).getTime();
-    if (Date.now() > expiresAt) {
+    if (!expiresAt || Date.now() > expiresAt) {
+      console.warn(`[VERIFY] Expired token for ${record.fields.email}`);
       return res.status(400).json({ error: 'token_expired' });
     }
 
-    // Clear token fields
+    // Clear magic link (single-use)
     await base('restaurantMap').update(record.id, {
       loginToken: '',
       loginTokenExpires: ''
@@ -97,11 +104,14 @@ router.post('/verify', express.json(), async (req, res) => {
     // Prepare JWT payload
     const payload = {
       restaurantId: record.fields.restaurantId,
-      email: record.fields.email
+      email: record.fields.email,
+      name: record.fields.name || null
     };
 
     // Sign a JWT (valid for 1 day)
     const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+    console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email})`);
 
     return res.status(200).json({ message: 'login_success', token: jwtToken });
   } catch (err) {
