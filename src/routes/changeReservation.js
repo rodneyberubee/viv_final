@@ -110,7 +110,23 @@ export const changeReservation = async (req) => {
       })
       .all();
 
-    const sameSlot = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    // 🔹 PRE-FILTER: remove blocked/past/future-cutoff
+    const validReservations = allForDate.filter(r => {
+      const slot = r.fields.timeSlot?.trim();
+      const status = r.fields.status?.trim().toLowerCase();
+      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
+      return (
+        status !== 'blocked' &&
+        slotDateTime &&
+        !isPast(normalizedDate, slot, timeZone) &&
+        slotDateTime <= cutoffDate
+      );
+    });
+
+    console.log('[DEBUG][changeReservation] Total reservations fetched:', allForDate.length);
+    console.log('[DEBUG][changeReservation] Valid reservations after filtering:', validReservations.length);
+
+    const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlot.some(r => r.fields.status?.toLowerCase() === 'blocked');
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
@@ -130,10 +146,9 @@ export const changeReservation = async (req) => {
         let after = null;
 
         const isAvailable = (timeStr) => {
-          const entries = allForDate.filter(r => r.fields.timeSlot?.trim() === timeStr);
-          const blocked = entries.some(r => r.fields.status?.toLowerCase() === 'blocked');
+          const entries = validReservations.filter(r => r.fields.timeSlot?.trim() === timeStr);
           const confirmed = entries.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
-          return !blocked && confirmed < maxReservations;
+          return confirmed < maxReservations;
         };
 
         let forward = target;
