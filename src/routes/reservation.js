@@ -1,12 +1,12 @@
 import Airtable from 'airtable';
-import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js'; // ✅ Added isPast
+import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
-import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js'; // ✨ added
+import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
 export const createReservation = async (parsed, config) => {
-  const { name, partySize, contactInfo, date, timeSlot, restaurantId } = parsed; // <-- include restaurantId
+  const { name, partySize, contactInfo, date, timeSlot, restaurantId } = parsed;
   const { baseId, tableName } = config;
 
   const base = airtableClient.base(baseId);
@@ -18,7 +18,7 @@ export const createReservation = async (parsed, config) => {
     contactInfo,
     date,
     timeSlot,
-    restaurantId, // <-- store it in Airtable
+    restaurantId,
     rawConfirmationCode: confirmationCode,
     status: 'confirmed'
   };
@@ -31,17 +31,15 @@ export const reservation = async (req) => {
   const { restaurantId } = req.params;
 
   let parsed = req.body;
-
-  // Handle stringified userMessage JSON
   if (typeof parsed.userMessage === 'string') {
     try {
       const fallback = JSON.parse(parsed.userMessage);
-      parsed = { ...fallback, restaurantId: restaurantId, route: parsed.route }; // <-- ensure restaurantId is carried over
+      parsed = { ...fallback, restaurantId: restaurantId, route: parsed.route };
     } catch (e) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_json_in_userMessage' } };
     }
   } else {
-    parsed.restaurantId = restaurantId; // <-- add it for non-stringified bodies
+    parsed.restaurantId = restaurantId;
   }
 
   const { name, partySize, contactInfo, date, timeSlot } = parsed;
@@ -51,7 +49,6 @@ export const reservation = async (req) => {
   if (!contactInfo) missing.push('contactInfo');
   if (!date) missing.push('date');
   if (!timeSlot) missing.push('timeSlot');
-
   if (missing.length > 0) {
     return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing } };
   }
@@ -65,39 +62,24 @@ export const reservation = async (req) => {
     const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
     const base = airtableClient.base(baseId);
 
-    // ✅ Use dateHelpers for consistent parsing and zone awareness
-    const now = getCurrentDateTime(timeZone).startOf('day'); // Start of today in restaurant's timezone
-    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day'); // Future cutoff at end of day
+    const now = getCurrentDateTime(timeZone).startOf('day');
+    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
     const reservationTime = parseDateTime(date, timeSlot, timeZone);
 
-    // Debugging: log parsed values
-    console.log('[DEBUG][reservation] Incoming date/time:', { date, timeSlot });
-    console.log('[DEBUG][reservation] Parsed reservationTime:', reservationTime?.toISO() || 'Invalid');
-    console.log('[DEBUG][reservation] Current day start:', now.toISO());
-    console.log('[DEBUG][reservation] Cutoff date (end of day):', cutoffDate.toISO());
-    console.log('[DEBUG][reservation] TimeZone used:', timeZone);
-
-    // Guard: invalid date/time
     if (!reservationTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
-
-    // Guardrail: Block past-time reservations
     if (isPast(date, timeSlot, timeZone)) {
-      console.warn('[WARN][reservation] Attempted to book past time');
       return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
     }
-
-    // Guardrail: Outside reservation window (rounded to full days)
     if (reservationTime > cutoffDate) {
-      console.warn('[WARN][reservation] Attempted to book beyond cutoff window');
       return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
     }
 
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
 
-    // 🔹 SCOPED query: only this restaurant + date
+    // 🔹 Query only this restaurant + date
     const reservations = await base(tableName)
       .select({
         filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
@@ -105,29 +87,43 @@ export const reservation = async (req) => {
       })
       .all();
 
-    // 🔹 PRE-FILTER: remove blocked/past/future-cutoff
+    // 🔹 First: detect if the requested slot is blocked
+    const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+    if (isBlocked) {
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'blocked',
+          remaining: 0,
+          date,
+          timeSlot,
+          alternatives: null
+        }
+      };
+    }
+
+    // 🔹 Filter for confirmed reservations only (for capacity checks)
     const validReservations = reservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
       return (
-        status !== 'blocked' &&
+        status === 'confirmed' &&
         slotDateTime &&
         !isPast(normalizedDate, slot, timeZone) &&
         slotDateTime <= cutoffDate
       );
     });
 
-    console.log('[DEBUG][reservation] Total reservations fetched:', reservations.length);
-    console.log('[DEBUG][reservation] Valid reservations after filtering:', validReservations.length);
-
     const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const confirmedCount = sameSlot.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+    const confirmedCount = sameSlot.length;
 
     const isSlotAvailable = (time) => {
       const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time);
-      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-      return confirmed.length < maxReservations;
+      return matching.length < maxReservations;
     };
 
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
@@ -143,7 +139,6 @@ export const reservation = async (req) => {
           break;
         }
       }
-
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
         if (isSlotAvailable(backward.toFormat('HH:mm'))) {
@@ -151,11 +146,10 @@ export const reservation = async (req) => {
           break;
         }
       }
-
       return { before, after };
     };
 
-    if (confirmedCount.length >= maxReservations) {
+    if (confirmedCount >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime);
       return {
         status: 409,
@@ -171,9 +165,7 @@ export const reservation = async (req) => {
       };
     }
 
-    const { confirmationCode } = await createReservation(parsed, config); // <-- now includes restaurantId
-
-    // ✨ Send email after successful reservation creation
+    const { confirmationCode } = await createReservation(parsed, config);
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
     return {
