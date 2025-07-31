@@ -1,37 +1,20 @@
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
-import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js'; // ✅ Added getCurrentDateTime for clearer logs
+import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
   const { date, timeSlot } = req.body;
 
   if (!date || !timeSlot) {
-    const parsed = {
-      date: date || null,
-      timeSlot: timeSlot || null,
-      restaurantId // <-- include for context
-    };
-
-    return {
-      status: 200,
-      body: {
-        type: 'availability.check.incomplete',
-        parsed
-      }
-    };
+    const parsed = { date: date || null, timeSlot: timeSlot || null, restaurantId };
+    return { status: 200, body: { type: 'availability.check.incomplete', parsed } };
   }
 
   const config = await loadRestaurantConfig(restaurantId);
   if (!config) {
     console.error('[ERROR] Restaurant config not found for:', restaurantId);
-    return {
-      status: 404,
-      body: {
-        type: 'availability.check.error',
-        error: 'config_not_found'
-      }
-    };
+    return { status: 404, body: { type: 'availability.check.error', error: 'config_not_found' } };
   }
 
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
@@ -41,64 +24,55 @@ export const checkAvailability = async (req) => {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-    const now = getCurrentDateTime(timeZone).startOf('day'); // Start of today in restaurant's timezone
-    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day'); // Future cutoff at end of day
+    const now = getCurrentDateTime(timeZone).startOf('day');
+    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
-    // Debugging: log what Luxon is parsing
     console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime, restaurantId });
-    console.log('[DEBUG][checkAvailability] Parsed DateTime (restaurant zone):', currentTime?.toISO() || 'Invalid');
-    console.log('[DEBUG][checkAvailability] Now (restaurant zone):', now.toISO());
-    console.log('[DEBUG][checkAvailability] Cutoff date (end of day):', cutoffDate.toISO());
+    console.log('[DEBUG][checkAvailability] Parsed DateTime:', currentTime?.toISO() || 'Invalid');
+    console.log('[DEBUG][checkAvailability] Now:', now.toISO());
+    console.log('[DEBUG][checkAvailability] Cutoff date:', cutoffDate.toISO());
     console.log('[DEBUG][checkAvailability] TimeZone used:', timeZone);
 
-    // ✅ Guard against invalid date/time parsing
     if (!currentTime) {
-      return {
-        status: 400,
-        body: {
-          type: 'availability.check.error',
-          error: 'invalid_date_or_time'
-        }
-      };
+      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time' } };
     }
-
-    // ✅ Guardrail: Prevent checking past times
     if (isPast(normalizedDate, normalizedTime, timeZone)) {
-      console.warn('[WARN][checkAvailability] Attempted to check a past time slot');
-      return {
-        status: 400,
-        body: {
-          type: 'availability.check.error',
-          error: 'cannot_check_past'
-        }
-      };
+      return { status: 400, body: { type: 'availability.check.error', error: 'cannot_check_past' } };
     }
-
-    // ✅ Guardrail: Prevent checking beyond the allowed future cutoff
     if (currentTime > cutoffDate) {
-      console.warn('[WARN][checkAvailability] Attempted to check beyond futureCutoff');
+      return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window' } };
+    }
+
+    // Query only for this restaurant + date
+    const formula = `AND({restaurantId} = '${restaurantId}', {dateFormatted} = '${normalizedDate}')`;
+    const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
+
+    // Check if this exact slot is blocked
+    const sameSlotAll = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+    if (isBlocked) {
       return {
-        status: 400,
+        status: 200,
         body: {
-          type: 'availability.check.error',
-          error: 'outside_reservation_window'
+          type: 'availability.unavailable',
+          available: false,
+          reason: 'blocked',
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          restaurantId,
+          alternatives: null,
+          remaining: 0
         }
       };
     }
 
-    // 🔄 Updated formula to also filter by restaurantId
-    const formula = `AND({restaurantId} = '${restaurantId}', {dateFormatted} = '${normalizedDate}')`;
-    const allReservations = await airtable(tableName)
-      .select({ filterByFormula: formula })
-      .all();
-
-    // 🔹 PRE-FILTER: remove blocked, past, or beyond cutoff
+    // Filter out blocked/past/out-of-window for availability calculations
     const validReservations = allReservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
       return (
-        status !== 'blocked' &&
+        status === 'confirmed' &&
         slotDateTime &&
         !isPast(normalizedDate, slot, timeZone) &&
         slotDateTime <= cutoffDate
@@ -127,7 +101,6 @@ export const checkAvailability = async (req) => {
           break;
         }
       }
-
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
         const b = backward.toFormat('HH:mm');
@@ -136,18 +109,15 @@ export const checkAvailability = async (req) => {
           break;
         }
       }
-
       return results;
     };
 
     const matchingSlotReservations = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = matchingSlotReservations.filter(r => (r.fields.status || '').trim().toLowerCase() === 'confirmed').length;
-
     const remaining = maxReservations - confirmedCount;
 
     if (remaining <= 0) {
       const alternatives = findNextAvailableSlots(currentTime, 96);
-
       return {
         status: 200,
         body: {
@@ -156,7 +126,7 @@ export const checkAvailability = async (req) => {
           reason: 'full',
           date: normalizedDate,
           timeSlot: normalizedTime,
-          restaurantId, // <-- add context
+          restaurantId,
           alternatives,
           remaining: 0
         }
@@ -170,19 +140,12 @@ export const checkAvailability = async (req) => {
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
-        restaurantId, // <-- add context
+        restaurantId,
         remaining
       }
     };
-
   } catch (err) {
     console.error('[ERROR] Airtable checkAvailability failure', err);
-    return {
-      status: 500,
-      body: {
-        type: 'availability.check.error',
-        error: 'airtable_query_failed'
-      }
-    };
+    return { status: 500, body: { type: 'availability.check.error', error: 'airtable_query_failed' } };
   }
 };
