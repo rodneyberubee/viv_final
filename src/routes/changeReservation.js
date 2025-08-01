@@ -69,21 +69,6 @@ export const changeReservation = async (req) => {
   }
 
   try {
-    // Fetch the reservation to update
-    const match = await airtable(tableName)
-      .select({
-        filterByFormula: `AND({rawConfirmationCode} = '${normalizedCode}', {restaurantId} = '${restaurantId}')`,
-      })
-      .firstPage();
-
-    if (match.length === 0) {
-      console.warn('[WARN][changeReservation] No matching reservation for code:', normalizedCode);
-      return {
-        status: 404,
-        body: { type: 'reservation.change.not_found', confirmationCode: normalizedCode }
-      };
-    }
-
     // Fetch all reservations for the target date
     const allForDate = await airtable(tableName)
       .select({
@@ -91,26 +76,7 @@ export const changeReservation = async (req) => {
       })
       .all();
 
-    // Check if requested slot is explicitly blocked
-    const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
-    if (isBlocked) {
-      const alternatives = findNextAvailableSlots(targetDateTime, allForDate, maxReservations);
-      return {
-        status: 409,
-        body: {
-          type: 'reservation.unavailable',
-          available: false,
-          reason: 'blocked',
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          alternatives,
-          restaurantId
-        }
-      };
-    }
-
-    // Filter non-blocked reservations
+    // Filter out blocked, past, or beyond cutoff reservations
     const validReservations = allForDate.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
@@ -123,13 +89,15 @@ export const changeReservation = async (req) => {
       );
     });
 
+    // Helper: isSlotAvailable
     const isSlotAvailable = (time) => {
       const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
     };
 
-    const findNextAvailableSlots = (centerTime, reservations, maxSteps = 96) => {
+    // Helper: findNextAvailableSlots
+    const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       let before = null;
       let after = null;
       let forward = centerTime;
@@ -152,11 +120,45 @@ export const changeReservation = async (req) => {
       return { before, after };
     };
 
+    // Fetch the reservation to update
+    const match = await airtable(tableName)
+      .select({
+        filterByFormula: `AND({rawConfirmationCode} = '${normalizedCode}', {restaurantId} = '${restaurantId}')`,
+      })
+      .firstPage();
+
+    if (match.length === 0) {
+      console.warn('[WARN][changeReservation] No matching reservation for code:', normalizedCode);
+      return {
+        status: 404,
+        body: { type: 'reservation.change.not_found', confirmationCode: normalizedCode }
+      };
+    }
+
+    // Check if requested slot is blocked
+    const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+    if (isBlocked) {
+      const alternatives = findNextAvailableSlots(targetDateTime);
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'blocked',
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          alternatives,
+          restaurantId
+        }
+      };
+    }
+
     const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
     if (confirmedCount >= maxReservations) {
-      const alternatives = findNextAvailableSlots(targetDateTime, validReservations);
+      const alternatives = findNextAvailableSlots(targetDateTime);
       return {
         status: 409,
         body: {
