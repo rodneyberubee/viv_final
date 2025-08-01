@@ -11,8 +11,9 @@ export const cancelReservation = async (req) => {
     return {
       status: 400,
       body: {
-        type: 'reservation.cancel.error',
-        error: 'missing_confirmation_code'
+        type: 'reservation.error',
+        error: 'missing_confirmation_code',
+        restaurantId
       }
     };
   }
@@ -23,8 +24,9 @@ export const cancelReservation = async (req) => {
     return {
       status: 404,
       body: {
-        type: 'reservation.cancel.error',
-        error: 'config_not_found'
+        type: 'reservation.error',
+        error: 'config_not_found',
+        restaurantId
       }
     };
   }
@@ -48,7 +50,8 @@ export const cancelReservation = async (req) => {
       return {
         status: 404,
         body: {
-          type: 'reservation.cancel.not_found',
+          type: 'reservation.error',
+          error: 'not_found',
           confirmationCode,
           restaurantId
         }
@@ -69,9 +72,9 @@ export const cancelReservation = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'reservation.cancelled',
+        type: 'reservation.cancel', // <-- standardized for frontend broadcast
         confirmationCode,
-        restaurantId, // <-- included for consistency
+        restaurantId,
         canceledReservation: {
           name: reservation.fields.name,
           date: reservation.fields.date,
@@ -84,8 +87,9 @@ export const cancelReservation = async (req) => {
     return {
       status: 500,
       body: {
-        type: 'reservation.cancel.error',
-        error: 'internal_error'
+        type: 'reservation.error',
+        error: 'internal_error',
+        restaurantId
       }
     };
   }
