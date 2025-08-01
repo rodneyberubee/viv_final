@@ -79,7 +79,7 @@ export const reservation = async (req) => {
     const normalizedDate = date.trim();
     const normalizedTime = timeSlot.toString().trim();
 
-    // 🔹 Query only this restaurant + date
+    // Query all reservations for this date
     const reservations = await base(tableName)
       .select({
         filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
@@ -87,10 +87,12 @@ export const reservation = async (req) => {
       })
       .all();
 
-    // 🔹 First: detect if the requested slot is blocked
+    // Detect if the requested slot is blocked
     const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
+      // Try to suggest alternatives if blocked
+      const alternatives = findNextAvailableSlots(reservationTime, reservations, maxReservations);
       return {
         status: 409,
         body: {
@@ -100,13 +102,13 @@ export const reservation = async (req) => {
           remaining: 0,
           date,
           timeSlot,
-          alternatives: null
+          alternatives
         }
       };
     }
 
-    // 🔹 Filter for confirmed reservations only (for capacity checks)
-    const validReservations = reservations.filter(r => {
+    // Filter confirmed for capacity checks
+    const confirmedReservations = reservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
@@ -118,15 +120,17 @@ export const reservation = async (req) => {
       );
     });
 
-    const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const sameSlot = confirmedReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = sameSlot.length;
 
-    const isSlotAvailable = (time) => {
-      const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time);
-      return matching.length < maxReservations;
+    const isSlotAvailable = (time, list) => {
+      const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
+      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+      return confirmed.length < maxReservations;
     };
 
-    const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
+    // Find next available slots using ALL reservations (blocked filtered out in isSlotAvailable)
+    const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
       let before = null;
       let after = null;
       let forward = centerTime;
@@ -134,14 +138,14 @@ export const reservation = async (req) => {
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
-        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
+        if (isSlotAvailable(forward.toFormat('HH:mm'), allReservations)) {
           after = forward.toFormat('HH:mm');
           break;
         }
       }
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
-        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
+        if (isSlotAvailable(backward.toFormat('HH:mm'), allReservations)) {
           before = backward.toFormat('HH:mm');
           break;
         }
@@ -150,7 +154,7 @@ export const reservation = async (req) => {
     };
 
     if (confirmedCount >= maxReservations) {
-      const alternatives = findNextAvailableSlots(reservationTime);
+      const alternatives = findNextAvailableSlots(reservationTime, reservations);
       return {
         status: 409,
         body: {
