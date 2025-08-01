@@ -25,6 +25,14 @@ export const requireAuth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // 🔹 Debugging: Log token issued-at and expiration in human-readable format
+    if (decoded.iat && decoded.exp) {
+      console.log(
+        `[AUTH DEBUG] Token issued at: ${new Date(decoded.iat * 1000).toISOString()}, expires at: ${new Date(decoded.exp * 1000).toISOString()}`
+      );
+    }
+
     console.log('[AUTH] Token verified for:', decoded.restaurantId || 'unknown', decoded.email || 'no-email');
     req.user = decoded; // Attach user payload for downstream routes
     next();
