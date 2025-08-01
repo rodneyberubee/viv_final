@@ -111,13 +111,13 @@ export const changeReservation = async (req) => {
       };
     }
 
-    // 🔹 Filter out blocked, past, or beyond cutoff reservations (keep confirmed + pending)
+    // 🔹 Filter out blocked, past, or beyond cutoff reservations (count ALL non-blocked as occupied)
     const validReservations = allForDate.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
       return (
-        status !== 'blocked' && // <-- allow unconfirmed
+        status !== 'blocked' &&
         slotDateTime &&
         !isPast(normalizedDate, slot, timeZone) &&
         slotDateTime <= cutoffDate
@@ -128,17 +128,17 @@ export const changeReservation = async (req) => {
     console.log('[DEBUG][changeReservation] Valid reservations after filtering:', validReservations.length);
 
     const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
+    const occupiedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() !== 'blocked').length;
 
-    if (confirmedCount >= maxReservations) {
+    if (occupiedCount >= maxReservations) {
       const findNextAvailableSlots = (target, maxSteps = 96) => {
         let before = null;
         let after = null;
 
         const isAvailable = (timeStr) => {
           const entries = validReservations.filter(r => r.fields.timeSlot?.trim() === timeStr);
-          const confirmed = entries.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
-          return confirmed < maxReservations;
+          const occupied = entries.filter(r => r.fields.status?.toLowerCase() !== 'blocked').length;
+          return occupied < maxReservations;
         };
 
         let forward = target;
@@ -165,7 +165,7 @@ export const changeReservation = async (req) => {
           type: 'reservation.unavailable',
           available: false,
           reason: 'full',
-          remaining: Math.max(0, maxReservations - confirmedCount),
+          remaining: Math.max(0, maxReservations - occupiedCount),
           date: normalizedDate,
           timeSlot: normalizedTime,
           alternatives,
