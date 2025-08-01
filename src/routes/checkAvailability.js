@@ -72,7 +72,7 @@ export const checkAvailability = async (req) => {
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
       return (
-        status === 'confirmed' &&
+        status !== 'blocked' && // <-- Changed to allow any non-blocked reservations
         slotDateTime &&
         !isPast(normalizedDate, slot, timeZone) &&
         slotDateTime <= cutoffDate
