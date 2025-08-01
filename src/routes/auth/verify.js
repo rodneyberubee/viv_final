@@ -18,8 +18,9 @@ router.post('/', express.json(), async (req, res) => {
   }
 
   try {
+    // Escape token for Airtable
     const records = await base('restaurantMap')
-      .select({ filterByFormula: `{loginToken} = '${token}'` })
+      .select({ filterByFormula: `{loginToken} = '${String(token).replace(/'/g, "\\'")}'` })
       .firstPage();
 
     if (records.length === 0) {
@@ -39,32 +40,31 @@ router.post('/', express.json(), async (req, res) => {
     }
 
     // Invalidate the token (single-use)
-    await base('restaurantMap').update(record.id, {
-      loginToken: '',
-      loginTokenExpires: ''
-    });
+    await base('restaurantMap').update(record.id, { loginToken: '', loginTokenExpires: '' });
 
+    // Prepare JWT payload
     const payload = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email,
-      name: record.fields.name
+      name: record.fields.name || null
     };
+    if (!payload.restaurantId || !payload.email) {
+      console.error('[JWT ERROR] Missing required fields for payload');
+      return res.status(500).json({ error: 'token_generation_failed' });
+    }
 
+    // Sign JWT (valid 1 day)
     let jwtToken;
     try {
       jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
-      console.log(`[AUTH] JWT created with exp: ${new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()}`);
     } catch (jwtErr) {
       console.error('[JWT ERROR] Failed to sign token:', jwtErr);
       return res.status(500).json({ error: 'token_generation_failed' });
     }
 
-    console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email}) using secret: ${process.env.JWT_SECRET.slice(0, 6)}***`);
+    console.log(`[AUTH] JWT issued for ${payload.restaurantId} (${payload.email})`);
 
-    return res.status(200).json({ 
-      message: 'login_success', 
-      token: jwtToken 
-    });
+    return res.status(200).json({ token: jwtToken });
   } catch (err) {
     console.error('[ERROR][verify]', err);
     return res.status(500).json({ error: 'internal_server_error' });
