@@ -47,47 +47,14 @@ export const checkAvailability = async (req) => {
     const formula = `AND({restaurantId} = '${restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
 
-    // Check if this exact slot is blocked
-    const sameSlotAll = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
-    if (isBlocked) {
-      return {
-        status: 200,
-        body: {
-          type: 'availability.unavailable',
-          available: false,
-          reason: 'blocked',
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          restaurantId,
-          alternatives: null,
-          remaining: 0
-        }
-      };
-    }
-
-    // Filter out blocked/past/out-of-window for availability calculations
-    const validReservations = allReservations.filter(r => {
-      const slot = r.fields.timeSlot?.trim();
-      const status = r.fields.status?.trim().toLowerCase();
-      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
-      return (
-        status !== 'blocked' && // <-- Changed to allow any non-blocked reservations
-        slotDateTime &&
-        !isPast(normalizedDate, slot, timeZone) &&
-        slotDateTime <= cutoffDate
-      );
-    });
-
-    console.log('[DEBUG][checkAvailability] Total fetched reservations:', allReservations.length);
-    console.log('[DEBUG][checkAvailability] Valid reservations after filtering:', validReservations.length);
-
+    // Helper: check if a time slot is available (ignores blocked)
     const isSlotAvailable = (time) => {
-      const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time);
+      const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmedCount = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed').length;
       return confirmedCount < maxReservations;
     };
 
+    // Helper: find next available slots
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       const results = { before: null, after: null };
       let forward = centerTime;
@@ -111,6 +78,42 @@ export const checkAvailability = async (req) => {
       }
       return results;
     };
+
+    // Check if this exact slot is blocked
+    const sameSlotAll = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+    if (isBlocked) {
+      const alternatives = findNextAvailableSlots(currentTime, 96);
+      return {
+        status: 200,
+        body: {
+          type: 'availability.unavailable',
+          available: false,
+          reason: 'blocked',
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          restaurantId,
+          alternatives,
+          remaining: 0
+        }
+      };
+    }
+
+    // Filter out blocked/past/out-of-window
+    const validReservations = allReservations.filter(r => {
+      const slot = r.fields.timeSlot?.trim();
+      const status = r.fields.status?.trim().toLowerCase();
+      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
+      return (
+        status !== 'blocked' &&
+        slotDateTime &&
+        !isPast(normalizedDate, slot, timeZone) &&
+        slotDateTime <= cutoffDate
+      );
+    });
+
+    console.log('[DEBUG][checkAvailability] Total fetched reservations:', allReservations.length);
+    console.log('[DEBUG][checkAvailability] Valid reservations after filtering:', validReservations.length);
 
     const matchingSlotReservations = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = matchingSlotReservations.filter(r => (r.fields.status || '').trim().toLowerCase() === 'confirmed').length;
