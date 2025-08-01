@@ -14,7 +14,6 @@ export const changeReservation = async (req) => {
   }
 
   const { confirmationCode, newDate, newTimeSlot } = req.body;
-
   const normalizedCode = confirmationCode?.trim();
   const normalizedDate = newDate?.trim();
   const normalizedTime = newTimeSlot?.trim();
@@ -92,11 +91,11 @@ export const changeReservation = async (req) => {
       })
       .all();
 
-    // 🔹 Check if requested slot is explicitly blocked
+    // Check if requested slot is explicitly blocked
     const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
-      console.warn('[WARN][changeReservation] Attempt to change to a blocked slot');
+      const alternatives = findNextAvailableSlots(targetDateTime, allForDate, maxReservations);
       return {
         status: 409,
         body: {
@@ -105,13 +104,13 @@ export const changeReservation = async (req) => {
           reason: 'blocked',
           date: normalizedDate,
           timeSlot: normalizedTime,
-          alternatives: null,
+          alternatives,
           restaurantId
         }
       };
     }
 
-    // 🔹 Filter out blocked, past, or beyond cutoff reservations (count ALL non-blocked as occupied)
+    // Filter non-blocked reservations
     const validReservations = allForDate.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
@@ -124,48 +123,47 @@ export const changeReservation = async (req) => {
       );
     });
 
-    console.log('[DEBUG][changeReservation] Total reservations fetched:', allForDate.length);
-    console.log('[DEBUG][changeReservation] Valid reservations after filtering:', validReservations.length);
+    const isSlotAvailable = (time) => {
+      const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
+      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+      return confirmed.length < maxReservations;
+    };
+
+    const findNextAvailableSlots = (centerTime, reservations, maxSteps = 96) => {
+      let before = null;
+      let after = null;
+      let forward = centerTime;
+      let backward = centerTime;
+
+      for (let i = 1; i <= maxSteps; i++) {
+        forward = forward.plus({ minutes: 15 });
+        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
+          after = forward.toFormat('HH:mm');
+          break;
+        }
+      }
+      for (let i = 1; i <= maxSteps; i++) {
+        backward = backward.minus({ minutes: 15 });
+        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
+          before = backward.toFormat('HH:mm');
+          break;
+        }
+      }
+      return { before, after };
+    };
 
     const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const occupiedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() !== 'blocked').length;
+    const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
 
-    if (occupiedCount >= maxReservations) {
-      const findNextAvailableSlots = (target, maxSteps = 96) => {
-        let before = null;
-        let after = null;
-
-        const isAvailable = (timeStr) => {
-          const entries = validReservations.filter(r => r.fields.timeSlot?.trim() === timeStr);
-          const occupied = entries.filter(r => r.fields.status?.toLowerCase() !== 'blocked').length;
-          return occupied < maxReservations;
-        };
-
-        let forward = target;
-        let backward = target;
-
-        for (let i = 1; i <= maxSteps; i++) {
-          forward = forward.plus({ minutes: 15 });
-          if (!after && isAvailable(forward.toFormat('HH:mm'))) {
-            after = forward.toFormat('HH:mm');
-          }
-          backward = backward.minus({ minutes: 15 });
-          if (!before && isAvailable(backward.toFormat('HH:mm'))) {
-            before = backward.toFormat('HH:mm');
-          }
-          if (before && after) break;
-        }
-        return { before, after };
-      };
-
-      const alternatives = findNextAvailableSlots(targetDateTime);
+    if (confirmedCount >= maxReservations) {
+      const alternatives = findNextAvailableSlots(targetDateTime, validReservations);
       return {
         status: 409,
         body: {
           type: 'reservation.unavailable',
           available: false,
           reason: 'full',
-          remaining: Math.max(0, maxReservations - occupiedCount),
+          remaining: Math.max(0, maxReservations - confirmedCount),
           date: normalizedDate,
           timeSlot: normalizedTime,
           alternatives,
