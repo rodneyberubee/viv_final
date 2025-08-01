@@ -9,7 +9,7 @@ export const changeReservation = async (req) => {
     console.error('[ERROR] restaurantId is missing from req.params');
     return {
       status: 400,
-      body: { type: 'reservation.change.error', error: 'missing_restaurant_id' }
+      body: { type: 'reservation.error', error: 'missing_restaurant_id' }
     };
   }
 
@@ -23,7 +23,7 @@ export const changeReservation = async (req) => {
     return {
       status: 400,
       body: {
-        type: 'reservation.change.error',
+        type: 'reservation.error',
         error: 'missing_required_fields',
         missing: [
           !normalizedCode && 'confirmationCode',
@@ -39,7 +39,7 @@ export const changeReservation = async (req) => {
     console.error('[ERROR][changeReservation] Config not found for:', restaurantId);
     return {
       status: 404,
-      body: { type: 'reservation.change.error', error: 'config_not_found' }
+      body: { type: 'reservation.error', error: 'config_not_found' }
     };
   }
 
@@ -54,7 +54,7 @@ export const changeReservation = async (req) => {
     console.warn('[WARN][changeReservation] Attempt to change to a past date/time');
     return {
       status: 400,
-      body: { type: 'reservation.change.error', error: 'cannot_change_to_past' }
+      body: { type: 'reservation.error', error: 'cannot_change_to_past' }
     };
   }
 
@@ -64,19 +64,17 @@ export const changeReservation = async (req) => {
     console.warn('[WARN][changeReservation] Attempt to change beyond futureCutoff');
     return {
       status: 400,
-      body: { type: 'reservation.change.error', error: 'outside_reservation_window' }
+      body: { type: 'reservation.error', error: 'outside_reservation_window' }
     };
   }
 
   try {
-    // Fetch all reservations for the target date
     const allForDate = await airtable(tableName)
       .select({
         filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
       })
       .all();
 
-    // Filter out blocked, past, or beyond cutoff reservations
     const validReservations = allForDate.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
@@ -89,20 +87,17 @@ export const changeReservation = async (req) => {
       );
     });
 
-    // Helper: isSlotAvailable
     const isSlotAvailable = (time) => {
       const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
     };
 
-    // Helper: findNextAvailableSlots
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       let before = null;
       let after = null;
       let forward = centerTime;
       let backward = centerTime;
-
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
         if (isSlotAvailable(forward.toFormat('HH:mm'))) {
@@ -120,7 +115,6 @@ export const changeReservation = async (req) => {
       return { before, after };
     };
 
-    // Fetch the reservation to update
     const match = await airtable(tableName)
       .select({
         filterByFormula: `AND({rawConfirmationCode} = '${normalizedCode}', {restaurantId} = '${restaurantId}')`,
@@ -131,11 +125,10 @@ export const changeReservation = async (req) => {
       console.warn('[WARN][changeReservation] No matching reservation for code:', normalizedCode);
       return {
         status: 404,
-        body: { type: 'reservation.change.not_found', confirmationCode: normalizedCode }
+        body: { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode }
       };
     }
 
-    // Check if requested slot is blocked
     const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
@@ -174,7 +167,6 @@ export const changeReservation = async (req) => {
       };
     }
 
-    // Update reservation
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
@@ -186,7 +178,7 @@ export const changeReservation = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'reservation.changed',
+        type: 'reservation.change', // <-- Standardized for broadcast
         confirmationCode: normalizedCode,
         newDate: normalizedDate,
         newTimeSlot: normalizedTime,
@@ -197,7 +189,7 @@ export const changeReservation = async (req) => {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
     return {
       status: 500,
-      body: { type: 'reservation.change.error', error: 'internal_error' }
+      body: { type: 'reservation.error', error: 'internal_error' }
     };
   }
 };
