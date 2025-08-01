@@ -111,13 +111,13 @@ export const changeReservation = async (req) => {
       };
     }
 
-    // 🔹 Filter out blocked, past, or beyond cutoff reservations for capacity checks
+    // 🔹 Filter out blocked, past, or beyond cutoff reservations (keep confirmed + pending)
     const validReservations = allForDate.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
       return (
-        status === 'confirmed' &&
+        status !== 'blocked' && // <-- allow unconfirmed
         slotDateTime &&
         !isPast(normalizedDate, slot, timeZone) &&
         slotDateTime <= cutoffDate
