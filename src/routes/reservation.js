@@ -87,14 +87,14 @@ export const reservation = async (req) => {
       })
       .all();
 
-    // Define helper for slot capacity checks
+    // Helper for capacity checks
     const isSlotAvailable = (time, list) => {
       const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
     };
 
-    // Define helper for suggesting alternative slots
+    // Helper for alternative suggestions
     const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
       let before = null;
       let after = null;
@@ -118,7 +118,7 @@ export const reservation = async (req) => {
       return { before, after };
     };
 
-    // Detect if the requested slot is blocked
+    // Detect if blocked
     const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
@@ -175,7 +175,7 @@ export const reservation = async (req) => {
     return {
       status: 201,
       body: {
-        type: 'reservation.complete',
+        type: 'reservation.create', // <-- changed from .complete
         confirmationCode,
         name: parsed.name,
         partySize: parsed.partySize,
