@@ -22,7 +22,7 @@ router.post('/', express.json(), async (req, res) => {
   try {
     // Check if email exists in restaurantMap
     const records = await base('restaurantMap')
-      .select({ filterByFormula: `{email} = '${email}'` })
+      .select({ filterByFormula: `{email} = '${String(email).replace(/'/g, "\\'")}'` })
       .firstPage();
 
     if (records.length === 0) {
@@ -80,7 +80,7 @@ router.post('/verify', express.json(), async (req, res) => {
 
   try {
     const records = await base('restaurantMap')
-      .select({ filterByFormula: `{loginToken} = '${token}'` })
+      .select({ filterByFormula: `{loginToken} = '${String(token).replace(/'/g, "\\'")}'` })
       .firstPage();
 
     if (records.length === 0) {
@@ -113,10 +113,31 @@ router.post('/verify', express.json(), async (req, res) => {
 
     console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email})`);
 
-    return res.status(200).json({ message: 'login_success', token: jwtToken });
+    return res.status(200).json({ token: jwtToken });
   } catch (err) {
     console.error('[ERROR][login.verify]', err);
     return res.status(500).json({ error: 'internal_server_error' });
+  }
+});
+
+// Step 3: Refresh JWT
+router.post('/refresh', express.json(), (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'missing_token' });
+  }
+
+  const oldToken = authHeader.split(' ')[1];
+  if (!process.env.JWT_SECRET) return res.status(500).json({ error: 'server_config_error' });
+
+  try {
+    const decoded = jwt.verify(oldToken, process.env.JWT_SECRET) as any;
+    const { restaurantId, email, name } = decoded;
+    const newToken = jwt.sign({ restaurantId, email, name }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    return res.status(200).json({ token: newToken });
+  } catch (err) {
+    console.error('[ERROR][auth.refresh]', err);
+    return res.status(401).json({ error: 'invalid_or_expired_token' });
   }
 });
 
