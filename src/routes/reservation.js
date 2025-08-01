@@ -87,11 +87,41 @@ export const reservation = async (req) => {
       })
       .all();
 
+    // Define helper for slot capacity checks
+    const isSlotAvailable = (time, list) => {
+      const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
+      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+      return confirmed.length < maxReservations;
+    };
+
+    // Define helper for suggesting alternative slots
+    const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
+      let before = null;
+      let after = null;
+      let forward = centerTime;
+      let backward = centerTime;
+
+      for (let i = 1; i <= maxSteps; i++) {
+        forward = forward.plus({ minutes: 15 });
+        if (isSlotAvailable(forward.toFormat('HH:mm'), allReservations)) {
+          after = forward.toFormat('HH:mm');
+          break;
+        }
+      }
+      for (let i = 1; i <= maxSteps; i++) {
+        backward = backward.minus({ minutes: 15 });
+        if (isSlotAvailable(backward.toFormat('HH:mm'), allReservations)) {
+          before = backward.toFormat('HH:mm');
+          break;
+        }
+      }
+      return { before, after };
+    };
+
     // Detect if the requested slot is blocked
     const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
-      // Try to suggest alternatives if blocked
       const alternatives = findNextAvailableSlots(reservationTime, reservations, maxReservations);
       return {
         status: 409,
@@ -122,36 +152,6 @@ export const reservation = async (req) => {
 
     const sameSlot = confirmedReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = sameSlot.length;
-
-    const isSlotAvailable = (time, list) => {
-      const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
-      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-      return confirmed.length < maxReservations;
-    };
-
-    // Find next available slots using ALL reservations (blocked filtered out in isSlotAvailable)
-    const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
-      let before = null;
-      let after = null;
-      let forward = centerTime;
-      let backward = centerTime;
-
-      for (let i = 1; i <= maxSteps; i++) {
-        forward = forward.plus({ minutes: 15 });
-        if (isSlotAvailable(forward.toFormat('HH:mm'), allReservations)) {
-          after = forward.toFormat('HH:mm');
-          break;
-        }
-      }
-      for (let i = 1; i <= maxSteps; i++) {
-        backward = backward.minus({ minutes: 15 });
-        if (isSlotAvailable(backward.toFormat('HH:mm'), allReservations)) {
-          before = backward.toFormat('HH:mm');
-          break;
-        }
-      }
-      return { before, after };
-    };
 
     if (confirmedCount >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime, reservations);
