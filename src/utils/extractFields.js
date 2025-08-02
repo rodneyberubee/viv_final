@@ -80,35 +80,27 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // Helper: Try to parse, else fallback to raw
-      const safeParse = (val, parser, fmt) => {
-        try {
-          const parsedVal = parser(val, 2025, 'UTC');
-          return parsedVal && typeof parsedVal.toFormat === 'function'
-            ? parsedVal.toFormat(fmt)
-            : val;
-        } catch {
-          return val;
-        }
-      };
-
-      // Normalize + retain raw values for fallback downstream
+      // Normalize + retain raw values (NO timezone applied here)
       if (parsed.parsed) {
         if (parsed.parsed.date) {
           parsed.parsed.rawDate = parsed.parsed.date;
-          parsed.parsed.date = safeParse(parsed.parsed.date, parseFlexibleDate, 'yyyy-MM-dd');
+          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025);
+          parsed.parsed.date = parsedDate ? parsedDate.toFormat('yyyy-MM-dd') : parsed.parsed.date;
         }
         if (parsed.parsed.newDate) {
           parsed.parsed.rawNewDate = parsed.parsed.newDate;
-          parsed.parsed.newDate = safeParse(parsed.parsed.newDate, parseFlexibleDate, 'yyyy-MM-dd');
+          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025);
+          parsed.parsed.newDate = parsedNewDate ? parsedNewDate.toFormat('yyyy-MM-dd') : parsed.parsed.newDate;
         }
         if (parsed.parsed.timeSlot) {
           parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
-          parsed.parsed.timeSlot = safeParse(parsed.parsed.timeSlot, parseFlexibleTime, 'HH:mm');
+          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot);
+          parsed.parsed.timeSlot = parsedTime ? parsedTime.toFormat('HH:mm') : parsed.parsed.timeSlot;
         }
         if (parsed.parsed.newTimeSlot) {
           parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
-          parsed.parsed.newTimeSlot = safeParse(parsed.parsed.newTimeSlot, parseFlexibleTime, 'HH:mm');
+          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
+          parsed.parsed.newTimeSlot = parsedNewTime ? parsedNewTime.toFormat('HH:mm') : parsed.parsed.newTimeSlot;
         }
       }
 
