@@ -31,12 +31,17 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
-  const safeFormat = (val, fmt) => {
+  const safeFormat = (val, fmt, fieldName) => {
     try {
-      return val && typeof val === 'object' && typeof val.toFormat === 'function'
-        ? val.toFormat(fmt)
-        : (val || null);
-    } catch {
+      if (val && typeof val === 'object' && typeof val.toFormat === 'function') {
+        const formatted = val.toFormat(fmt);
+        console.log(`[DEBUG][extractFields] Successfully formatted ${fieldName}:`, formatted);
+        return formatted;
+      }
+      console.warn(`[DEBUG][extractFields] Value for ${fieldName} not a Luxon object, keeping raw:`, val);
+      return val || null;
+    } catch (err) {
+      console.error(`[DEBUG][extractFields] Failed to format ${fieldName}:`, err, 'Raw value:', val);
       return val || null;
     }
   };
@@ -72,12 +77,14 @@ export const extractFields = async (vivInput, restaurantId) => {
     const jsonEnd = aiResponse.lastIndexOf('}') + 1;
     if (jsonStart !== -1 && jsonEnd > jsonStart) {
       aiResponse = aiResponse.slice(jsonStart, jsonEnd);
+      console.log('[DEBUG][extractFields] Trimmed AI content to JSON block:', aiResponse);
+    } else {
+      console.warn('[DEBUG][extractFields] Could not find proper JSON boundaries. Raw response used.');
     }
 
     let parsed;
     try {
       parsed = JSON.parse(aiResponse);
-
       console.log('[DEBUG][extractFields] Parsed JSON before normalization:', parsed);
 
       let normalizedType = parsed.type;
@@ -87,23 +94,25 @@ export const extractFields = async (vivInput, restaurantId) => {
         if (parsed.parsed.date) {
           parsed.parsed.rawDate = parsed.parsed.date;
           const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025);
-          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd');
+          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd', 'date');
         }
         if (parsed.parsed.newDate) {
           parsed.parsed.rawNewDate = parsed.parsed.newDate;
           const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025);
-          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd');
+          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd', 'newDate');
         }
         if (parsed.parsed.timeSlot) {
           parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
           const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot);
-          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm');
+          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm', 'timeSlot');
         }
         if (parsed.parsed.newTimeSlot) {
           parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
           const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
-          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm');
+          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm', 'newTimeSlot');
         }
+      } else {
+        console.warn('[DEBUG][extractFields] Missing parsed object in AI response');
       }
 
       // Recompute type based on completeness
@@ -125,11 +134,11 @@ export const extractFields = async (vivInput, restaurantId) => {
       console.log('[DEBUG][extractFields] Parsed JSON after normalization:', parsed);
 
     } catch (e) {
-      console.error('[extractFields] 💥 JSON parse error:', e);
+      console.error('[extractFields] 💥 JSON parse error:', e, 'AI response:', aiResponse);
       return { type: 'chat', parsed: {} };
     }
 
-    console.log('[DEBUG][extractFields] Final output:', parsed);
+    console.log('[DEBUG][extractFields] Final output to router:', parsed);
     console.log(`[DEBUG][extractFields] Processing time: ${Date.now() - start}ms`);
 
     return { type: parsed.type, intent: parsed.intent, parsed: parsed.parsed };
