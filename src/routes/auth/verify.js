@@ -9,8 +9,12 @@ const router = express.Router();
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.MASTER_BASE_ID);
 
 router.post('/', express.json(), async (req, res) => {
-  const { token } = req.body;
-  if (!token) return res.status(400).json({ error: 'missing_token' });
+  let { token } = req.body;
+  token = typeof token === 'string' ? token.trim() : '';
+  if (!token) {
+    console.warn('[VERIFY] Missing or invalid token in request body');
+    return res.status(400).json({ error: 'missing_token' });
+  }
 
   if (!process.env.JWT_SECRET) {
     console.error('[CONFIG ERROR] Missing JWT_SECRET in environment variables');
@@ -18,9 +22,9 @@ router.post('/', express.json(), async (req, res) => {
   }
 
   try {
-    // Escape token for Airtable
+    // Escape token for Airtable filter
     const records = await base('restaurantMap')
-      .select({ filterByFormula: `{loginToken} = '${String(token).replace(/'/g, "\\'")}'` })
+      .select({ filterByFormula: `{loginToken} = '${token.replace(/'/g, "\\'")}'` })
       .firstPage();
 
     if (records.length === 0) {
@@ -53,16 +57,10 @@ router.post('/', express.json(), async (req, res) => {
       return res.status(500).json({ error: 'token_generation_failed' });
     }
 
-    // Sign JWT (valid 1 day)
-    let jwtToken;
-    try {
-      jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
-    } catch (jwtErr) {
-      console.error('[JWT ERROR] Failed to sign token:', jwtErr);
-      return res.status(500).json({ error: 'token_generation_failed' });
-    }
+    // Sign JWT (valid for 1 day)
+    const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 
-    console.log(`[AUTH] JWT issued for ${payload.restaurantId} (${payload.email})`);
+    console.log(`[AUTH] JWT successfully issued for restaurantId=${payload.restaurantId}, email=${payload.email}`);
 
     return res.status(200).json({ token: jwtToken });
   } catch (err) {
