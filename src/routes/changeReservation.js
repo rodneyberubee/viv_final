@@ -54,6 +54,20 @@ export const changeReservation = async (req) => {
     return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
   }
 
+  // Business hours validation
+  const weekday = targetDateTime.toFormat('cccc').toLowerCase();
+  const openKey = `${weekday}Open`;
+  const closeKey = `${weekday}Close`;
+  const openTime = config[openKey];
+  const closeTime = config[closeKey];
+  if (openTime && closeTime) {
+    const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+    const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+    if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+    }
+  }
+
   try {
     // Lookup reservation by code
     const match = await airtable(tableName)
@@ -76,22 +90,68 @@ export const changeReservation = async (req) => {
       })
       .all();
 
+    const isSlotAvailable = (time) => {
+      const matching = allForDate.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
+      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+      return confirmed.length < maxReservations;
+    };
+
+    const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
+      let before = null;
+      let after = null;
+      let forward = centerTime;
+      let backward = centerTime;
+      for (let i = 1; i <= maxSteps; i++) {
+        forward = forward.plus({ minutes: 15 });
+        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
+          after = forward.toFormat('HH:mm');
+          break;
+        }
+      }
+      for (let i = 1; i <= maxSteps; i++) {
+        backward = backward.minus({ minutes: 15 });
+        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
+          before = backward.toFormat('HH:mm');
+          break;
+        }
+      }
+      return { before, after };
+    };
+
     // Check for block
     const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
+      const alternatives = findNextAvailableSlots(targetDateTime);
       return {
         status: 409,
-        body: { type: 'reservation.unavailable', available: false, reason: 'blocked', date: normalizedDate, timeSlot: normalizedTime }
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'blocked',
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          remaining: 0,
+          alternatives
+        }
       };
     }
 
     // Capacity check
     const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
     if (confirmedReservations.length >= maxReservations) {
+      const alternatives = findNextAvailableSlots(targetDateTime);
       return {
         status: 409,
-        body: { type: 'reservation.unavailable', available: false, reason: 'full', date: normalizedDate, timeSlot: normalizedTime }
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'full',
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          remaining: 0,
+          alternatives
+        }
       };
     }
 
