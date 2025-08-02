@@ -11,7 +11,17 @@ export const extractFields = async (vivInput, restaurantId) => {
 
   const systemPrompt = [
     'You are VivB, a structured parser for a restaurant AI assistant.',
-    // ... (rest of prompt unchanged)
+    'IMPORTANT: Always respond ONLY with a single valid JSON object. Do NOT include explanations, confirmations, or extra text.',
+    '',
+    'Your job is to:',
+    '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
+    '- Output valid JSON starting on the first line like:',
+    '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "partySize": null, "contactInfo": null, "date": null, "timeSlot": null } }',
+    '',
+    'Rules:',
+    '- Absolutely no extra text before or after the JSON.',
+    '- Always return "intent", "type", and "parsed".',
+    '- If any field is unknown, set it to null.',
   ].join('\n');
 
   const messages = Array.isArray(vivInput.messages)
@@ -41,7 +51,7 @@ export const extractFields = async (vivInput, restaurantId) => {
       },
       body: JSON.stringify({
         model: 'gpt-3.5-turbo',
-        temperature: 0.8,
+        temperature: 0,
         messages
       }),
     });
@@ -54,15 +64,19 @@ export const extractFields = async (vivInput, restaurantId) => {
       return { type: 'chat', parsed: {} };
     }
 
-    const aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
+    let aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
     console.log('[DEBUG][extractFields] AI Raw content:', aiResponse);
+
+    // Extract only the JSON portion if extra text appears
+    const jsonStart = aiResponse.indexOf('{');
+    const jsonEnd = aiResponse.lastIndexOf('}') + 1;
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+      aiResponse = aiResponse.slice(jsonStart, jsonEnd);
+    }
 
     let parsed;
     try {
-      const jsonStart = aiResponse.indexOf('{');
-      const jsonEnd = aiResponse.lastIndexOf('}') + 1;
-      const jsonString = aiResponse.slice(jsonStart, jsonEnd);
-      parsed = JSON.parse(jsonString);
+      parsed = JSON.parse(aiResponse);
 
       console.log('[DEBUG][extractFields] Parsed JSON before normalization:', parsed);
 
