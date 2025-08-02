@@ -1,8 +1,8 @@
 // routes/auth/refresh.js
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const Airtable = require('airtable');
-const dotenv = require('dotenv');
+import express from 'express';
+import jwt from 'jsonwebtoken';
+import Airtable from 'airtable';
+import dotenv from 'dotenv';
 dotenv.config();
 
 const router = express.Router();
@@ -55,4 +55,4 @@ router.post('/', express.json(), async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
