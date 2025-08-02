@@ -4,10 +4,14 @@ import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
-  const { date, timeSlot } = req.body;
+  const { date, timeSlot, rawDate, rawTimeSlot } = req.body; // Added support for raw fallbacks
 
-  if (!date || !timeSlot) {
-    const parsed = { date: date || null, timeSlot: timeSlot || null, restaurantId };
+  // Use normalized or fallback raw values
+  const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
+  const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
+
+  if (!normalizedDate || !normalizedTime) {
+    const parsed = { date: normalizedDate || null, timeSlot: normalizedTime || null, restaurantId };
     return { status: 200, body: { type: 'availability.check.incomplete', parsed } };
   }
 
@@ -21,14 +25,6 @@ export const checkAvailability = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    const normalizedDate = typeof date === 'string' ? date.trim() : date;
-    const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
-
-    // Early guard for missing/invalid inputs
-    if (!normalizedDate || !normalizedTime) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time' } };
-    }
-
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
