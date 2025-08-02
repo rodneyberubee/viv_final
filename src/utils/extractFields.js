@@ -39,6 +39,17 @@ export const extractFields = async (vivInput, restaurantId) => {
         { role: 'user', content: vivInput.text || '' }
       ];
 
+  // Helper to safely handle Luxon formatting or return raw strings
+  const safeFormat = (val, fmt) => {
+    try {
+      return val && typeof val === 'object' && typeof val.toFormat === 'function'
+        ? val.toFormat(fmt)
+        : (val || null);
+    } catch {
+      return val || null;
+    }
+  };
+
   try {
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -80,27 +91,23 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // Normalize + retain raw values (NO timezone applied here)
+      // Normalize + retain raw values (no timezone application here)
       if (parsed.parsed) {
         if (parsed.parsed.date) {
           parsed.parsed.rawDate = parsed.parsed.date;
-          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025);
-          parsed.parsed.date = parsedDate ? parsedDate.toFormat('yyyy-MM-dd') : parsed.parsed.date;
+          parsed.parsed.date = safeFormat(parseFlexibleDate(parsed.parsed.date, 2025), 'yyyy-MM-dd');
         }
         if (parsed.parsed.newDate) {
           parsed.parsed.rawNewDate = parsed.parsed.newDate;
-          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025);
-          parsed.parsed.newDate = parsedNewDate ? parsedNewDate.toFormat('yyyy-MM-dd') : parsed.parsed.newDate;
+          parsed.parsed.newDate = safeFormat(parseFlexibleDate(parsed.parsed.newDate, 2025), 'yyyy-MM-dd');
         }
         if (parsed.parsed.timeSlot) {
           parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
-          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot);
-          parsed.parsed.timeSlot = parsedTime ? parsedTime.toFormat('HH:mm') : parsed.parsed.timeSlot;
+          parsed.parsed.timeSlot = safeFormat(parseFlexibleTime(parsed.parsed.timeSlot), 'HH:mm');
         }
         if (parsed.parsed.newTimeSlot) {
           parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
-          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
-          parsed.parsed.newTimeSlot = parsedNewTime ? parsedNewTime.toFormat('HH:mm') : parsed.parsed.newTimeSlot;
+          parsed.parsed.newTimeSlot = safeFormat(parseFlexibleTime(parsed.parsed.newTimeSlot), 'HH:mm');
         }
       }
 
