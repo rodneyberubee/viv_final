@@ -6,24 +6,21 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
 export const createReservation = async (parsed, config) => {
-  let { name, partySize, contactInfo, date, timeSlot } = parsed;
+  let { name, partySize, contactInfo, date, timeSlot, rawDate, rawTimeSlot } = parsed;
   const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
 
-  // Force restaurantId from config to prevent spoofing
   const restaurantId = config.restaurantId;
 
-  // Normalize values safely
-  const normalizedDate = typeof date === 'string' ? date.trim() : date;
-  const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
+  // Normalize with fallback to raw values
+  const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
+  const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
 
-  // Early fail if date or time is missing
   if (!normalizedDate || !normalizedTime) throw new Error('invalid_date_or_time');
 
   const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
   const now = getCurrentDateTime(timeZone).startOf('day');
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
-  // Validate again at write-time
   if (!reservationTime) throw new Error('invalid_date_or_time');
   if (isPast(normalizedDate, normalizedTime, timeZone)) throw new Error('cannot_book_in_past');
   if (reservationTime > cutoffDate) throw new Error('outside_reservation_window');
@@ -42,14 +39,12 @@ export const createReservation = async (parsed, config) => {
     }
   }
 
-  // Enforce required fields at write time
   if (!name?.trim() || !contactInfo?.trim()) {
     throw new Error('missing_required_fields');
   }
 
   const base = airtableClient.base(baseId);
 
-  // Re-query for slot availability and block check
   const reservations = await base(tableName)
     .select({
       filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
@@ -64,7 +59,6 @@ export const createReservation = async (parsed, config) => {
   const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
   if (confirmedReservations.length >= maxReservations) throw new Error('slot_full');
 
-  // If all checks pass, create reservation
   const confirmationCode = Math.random().toString(36).substr(2, 9);
   const fields = {
     name,
@@ -96,13 +90,13 @@ export const reservation = async (req) => {
     parsed.restaurantId = restaurantId;
   }
 
-  const { name, partySize, contactInfo, date, timeSlot } = parsed;
+  const { name, partySize, contactInfo, date, timeSlot, rawDate, rawTimeSlot } = parsed;
   const missing = [];
   if (!name) missing.push('name');
   if (!partySize) missing.push('partySize');
   if (!contactInfo) missing.push('contactInfo');
-  if (!date) missing.push('date');
-  if (!timeSlot) missing.push('timeSlot');
+  if (!date && !rawDate) missing.push('date');
+  if (!timeSlot && !rawTimeSlot) missing.push('timeSlot');
   if (missing.length > 0) {
     return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing } };
   }
@@ -116,8 +110,8 @@ export const reservation = async (req) => {
     const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
     const base = airtableClient.base(baseId);
 
-    const normalizedDate = typeof date === 'string' ? date.trim() : date;
-    const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
+    const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
+    const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
 
     if (!normalizedDate || !normalizedTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
@@ -137,7 +131,6 @@ export const reservation = async (req) => {
       return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
     }
 
-    // Business hours validation
     const weekday = reservationTime.toFormat('cccc').toLowerCase();
     const openKey = `${weekday}Open`;
     const closeKey = `${weekday}Close`;
@@ -151,7 +144,6 @@ export const reservation = async (req) => {
       }
     }
 
-    // Query all reservations for this date
     const reservations = await base(tableName)
       .select({
         filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
@@ -159,14 +151,12 @@ export const reservation = async (req) => {
       })
       .all();
 
-    // Helper for capacity checks
     const isSlotAvailable = (time, list) => {
       const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
     };
 
-    // Helper for alternative suggestions
     const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
       let before = null;
       let after = null;
@@ -190,7 +180,6 @@ export const reservation = async (req) => {
       return { before, after };
     };
 
-    // Detect if blocked
     const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
@@ -202,14 +191,13 @@ export const reservation = async (req) => {
           available: false,
           reason: 'blocked',
           remaining: 0,
-          date,
-          timeSlot,
+          date: normalizedDate,
+          timeSlot: normalizedTime,
           alternatives
         }
       };
     }
 
-    // Filter confirmed for capacity checks
     const confirmedReservations = reservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
@@ -234,8 +222,8 @@ export const reservation = async (req) => {
           available: false,
           reason: 'full',
           remaining: 0,
-          date,
-          timeSlot,
+          date: normalizedDate,
+          timeSlot: normalizedTime,
           alternatives
         }
       };
