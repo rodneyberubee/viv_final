@@ -12,9 +12,13 @@ export const createReservation = async (parsed, config) => {
   // Force restaurantId from config to prevent spoofing
   const restaurantId = config.restaurantId;
 
-  // Normalize values
-  const normalizedDate = date.trim();
-  const normalizedTime = timeSlot.toString().trim();
+  // Normalize values safely
+  const normalizedDate = typeof date === 'string' ? date.trim() : date;
+  const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
+
+  // Early fail if date or time is missing
+  if (!normalizedDate || !normalizedTime) throw new Error('invalid_date_or_time');
+
   const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
   const now = getCurrentDateTime(timeZone).startOf('day');
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
@@ -25,7 +29,7 @@ export const createReservation = async (parsed, config) => {
   if (reservationTime > cutoffDate) throw new Error('outside_reservation_window');
 
   // Business hours validation
-  const weekday = reservationTime.toFormat('cccc').toLowerCase(); // e.g., 'monday'
+  const weekday = reservationTime.toFormat('cccc').toLowerCase();
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
@@ -112,14 +116,21 @@ export const reservation = async (req) => {
     const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
     const base = airtableClient.base(baseId);
 
+    const normalizedDate = typeof date === 'string' ? date.trim() : date;
+    const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
+
+    if (!normalizedDate || !normalizedTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
+    }
+
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
-    const reservationTime = parseDateTime(date, timeSlot, timeZone);
+    const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
 
     if (!reservationTime) {
       return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
     }
-    if (isPast(date, timeSlot, timeZone)) {
+    if (isPast(normalizedDate, normalizedTime, timeZone)) {
       return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past' } };
     }
     if (reservationTime > cutoffDate) {
@@ -133,15 +144,12 @@ export const reservation = async (req) => {
     const openTime = config[openKey];
     const closeTime = config[closeKey];
     if (openTime && closeTime) {
-      const openDateTime = parseDateTime(date, openTime, timeZone);
-      const closeDateTime = parseDateTime(date, closeTime, timeZone);
+      const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+      const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
       if (reservationTime < openDateTime || reservationTime > closeDateTime) {
         return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
       }
     }
-
-    const normalizedDate = date.trim();
-    const normalizedTime = timeSlot.toString().trim();
 
     // Query all reservations for this date
     const reservations = await base(tableName)
