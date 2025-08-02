@@ -1,9 +1,10 @@
-const express = require('express');
-const crypto = require('crypto');
-const Airtable = require('airtable');
-const dotenv = require('dotenv');
-const { Resend } = require('resend');
-const jwt = require('jsonwebtoken');
+// routes/auth/login.js
+import express from 'express';
+import crypto from 'crypto';
+import Airtable from 'airtable';
+import dotenv from 'dotenv';
+import { Resend } from 'resend';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 const router = express.Router();
@@ -133,4 +134,4 @@ router.post('/refresh', express.json(), (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
