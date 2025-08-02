@@ -37,23 +37,34 @@ export const checkAvailability = async (req) => {
       return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window' } };
     }
 
+    // Business hours check
+    const weekday = currentTime.toFormat('cccc').toLowerCase();
+    const openKey = `${weekday}Open`;
+    const closeKey = `${weekday}Close`;
+    const openTime = config[openKey];
+    const closeTime = config[closeKey];
+    if (openTime && closeTime) {
+      const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+      const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+      if (currentTime < openDateTime || currentTime > closeDateTime) {
+        return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
+      }
+    }
+
     // Query only for this restaurant + date
     const formula = `AND({restaurantId} = '${config.restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
 
-    // Helper: check if a time slot is available (ignores blocked)
     const isSlotAvailable = (time) => {
       const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmedCount = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed').length;
       return confirmedCount < maxReservations;
     };
 
-    // Helper: find next available slots
     const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
       const results = { before: null, after: null };
       let forward = centerTime;
       let backward = centerTime;
-
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
         const f = forward.toFormat('HH:mm');
@@ -93,7 +104,6 @@ export const checkAvailability = async (req) => {
       };
     }
 
-    // Filter out blocked/past/out-of-window
     const validReservations = allReservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
