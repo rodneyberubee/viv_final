@@ -55,7 +55,6 @@ export const extractFields = async (vivInput, restaurantId) => {
     });
 
     const json = await openaiRes.json();
-
     if (json.error) {
       console.error('[extractFields] ❌ OpenAI API returned error:', json.error);
       return { type: 'chat', parsed: {} };
@@ -68,7 +67,6 @@ export const extractFields = async (vivInput, restaurantId) => {
       const jsonStart = aiResponse.indexOf('{');
       const jsonEnd = aiResponse.lastIndexOf('}') + 1;
       const jsonString = aiResponse.slice(jsonStart, jsonEnd);
-
       parsed = JSON.parse(jsonString);
 
       if (!parsed.intent) {
@@ -82,37 +80,24 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // Helper to safely format Luxon objects or fall back to raw strings
-      const safeFormat = (val, fmt) => {
+      // Helper: Try to format, otherwise return raw
+      const safeParse = (val, parser, fmt) => {
         try {
-          return val && typeof val === 'object' && typeof val.toFormat === 'function'
-            ? val.toFormat(fmt)
-            : typeof val === 'string'
-            ? val
-            : null;
+          const parsedVal = parser(val, 2025, 'UTC');
+          return parsedVal && typeof parsedVal.toFormat === 'function'
+            ? parsedVal.toFormat(fmt)
+            : val; // fallback: keep raw string
         } catch {
-          return null;
+          return val; // fallback: keep raw string
         }
       };
 
-      // Normalize date/time to consistent strings for downstream parsing
+      // Normalize date/time or fallback to raw
       if (parsed.parsed) {
-        if (parsed.parsed.date) {
-          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
-          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd');
-        }
-        if (parsed.parsed.newDate) {
-          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025, 'UTC');
-          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd');
-        }
-        if (parsed.parsed.timeSlot) {
-          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot, 'UTC');
-          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm');
-        }
-        if (parsed.parsed.newTimeSlot) {
-          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot, 'UTC');
-          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm');
-        }
+        if (parsed.parsed.date) parsed.parsed.date = safeParse(parsed.parsed.date, parseFlexibleDate, 'yyyy-MM-dd');
+        if (parsed.parsed.newDate) parsed.parsed.newDate = safeParse(parsed.parsed.newDate, parseFlexibleDate, 'yyyy-MM-dd');
+        if (parsed.parsed.timeSlot) parsed.parsed.timeSlot = safeParse(parsed.parsed.timeSlot, parseFlexibleTime, 'HH:mm');
+        if (parsed.parsed.newTimeSlot) parsed.parsed.newTimeSlot = safeParse(parsed.parsed.newTimeSlot, parseFlexibleTime, 'HH:mm');
       }
 
       // Adjust type based on completion
@@ -137,18 +122,12 @@ export const extractFields = async (vivInput, restaurantId) => {
       }
 
       parsed.type = normalizedType;
-
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e);
       return { type: 'chat', parsed: {} };
     }
 
-    return {
-      type: parsed.type,
-      intent: parsed.intent,
-      parsed: parsed.parsed
-    };
-
+    return { type: parsed.type, intent: parsed.intent, parsed: parsed.parsed };
   } catch (error) {
     console.error('[extractFields] ❌ Fatal failure:', error);
     return { type: 'chat', parsed: {} };
