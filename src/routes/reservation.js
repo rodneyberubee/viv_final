@@ -20,14 +20,27 @@ export const createReservation = async (parsed, config) => {
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
   // Validate again at write-time
-  if (!reservationTime) {
-    throw new Error('invalid_date_or_time');
+  if (!reservationTime) throw new Error('invalid_date_or_time');
+  if (isPast(normalizedDate, normalizedTime, timeZone)) throw new Error('cannot_book_in_past');
+  if (reservationTime > cutoffDate) throw new Error('outside_reservation_window');
+
+  // Business hours validation
+  const weekday = reservationTime.toFormat('cccc').toLowerCase(); // e.g., 'monday'
+  const openKey = `${weekday}Open`;
+  const closeKey = `${weekday}Close`;
+  const openTime = config[openKey];
+  const closeTime = config[closeKey];
+  if (openTime && closeTime) {
+    const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+    const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+    if (reservationTime < openDateTime || reservationTime > closeDateTime) {
+      throw new Error('outside_business_hours');
+    }
   }
-  if (isPast(normalizedDate, normalizedTime, timeZone)) {
-    throw new Error('cannot_book_in_past');
-  }
-  if (reservationTime > cutoffDate) {
-    throw new Error('outside_reservation_window');
+
+  // Enforce required fields at write time
+  if (!name?.trim() || !contactInfo?.trim()) {
+    throw new Error('missing_required_fields');
   }
 
   const base = airtableClient.base(baseId);
@@ -42,14 +55,10 @@ export const createReservation = async (parsed, config) => {
 
   const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
   const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
-  if (isBlocked) {
-    throw new Error('blocked_slot');
-  }
+  if (isBlocked) throw new Error('blocked_slot');
 
   const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-  if (confirmedReservations.length >= maxReservations) {
-    throw new Error('slot_full');
-  }
+  if (confirmedReservations.length >= maxReservations) throw new Error('slot_full');
 
   // If all checks pass, create reservation
   const confirmationCode = Math.random().toString(36).substr(2, 9);
@@ -115,6 +124,20 @@ export const reservation = async (req) => {
     }
     if (reservationTime > cutoffDate) {
       return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
+    }
+
+    // Business hours validation
+    const weekday = reservationTime.toFormat('cccc').toLowerCase();
+    const openKey = `${weekday}Open`;
+    const closeKey = `${weekday}Close`;
+    const openTime = config[openKey];
+    const closeTime = config[closeKey];
+    if (openTime && closeTime) {
+      const openDateTime = parseDateTime(date, openTime, timeZone);
+      const closeDateTime = parseDateTime(date, closeTime, timeZone);
+      if (reservationTime < openDateTime || reservationTime > closeDateTime) {
+        return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+      }
     }
 
     const normalizedDate = date.trim();
