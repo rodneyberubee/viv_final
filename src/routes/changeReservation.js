@@ -7,10 +7,7 @@ export const changeReservation = async (req) => {
   const { restaurantId } = req.params;
   if (!restaurantId) {
     console.error('[ERROR] restaurantId is missing from req.params');
-    return {
-      status: 400,
-      body: { type: 'reservation.error', error: 'missing_restaurant_id' }
-    };
+    return { status: 400, body: { type: 'reservation.error', error: 'missing_restaurant_id' } };
   }
 
   const { confirmationCode, newDate, newTimeSlot } = req.body;
@@ -37,84 +34,28 @@ export const changeReservation = async (req) => {
   const config = await loadRestaurantConfig(restaurantId);
   if (!config) {
     console.error('[ERROR][changeReservation] Config not found for:', restaurantId);
-    return {
-      status: 404,
-      body: { type: 'reservation.error', error: 'config_not_found' }
-    };
+    return { status: 404, body: { type: 'reservation.error', error: 'config_not_found' } };
   }
 
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-  console.log('[DEBUG][changeReservation] Requested change to:', targetDateTime?.toISO() || 'Invalid');
-  console.log('[DEBUG][changeReservation] Using timezone:', timeZone);
-
+  if (!targetDateTime) {
+    return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
+  }
   if (isPast(normalizedDate, normalizedTime, timeZone)) {
-    console.warn('[WARN][changeReservation] Attempt to change to a past date/time');
-    return {
-      status: 400,
-      body: { type: 'reservation.error', error: 'cannot_change_to_past' }
-    };
+    return { status: 400, body: { type: 'reservation.error', error: 'cannot_change_to_past' } };
   }
 
   const now = getCurrentDateTime(timeZone).startOf('day');
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
   if (targetDateTime > cutoffDate) {
-    console.warn('[WARN][changeReservation] Attempt to change beyond futureCutoff');
-    return {
-      status: 400,
-      body: { type: 'reservation.error', error: 'outside_reservation_window' }
-    };
+    return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
   }
 
   try {
-    const allForDate = await airtable(tableName)
-      .select({
-        filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
-      })
-      .all();
-
-    const validReservations = allForDate.filter(r => {
-      const slot = r.fields.timeSlot?.trim();
-      const status = r.fields.status?.trim().toLowerCase();
-      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
-      return (
-        status !== 'blocked' &&
-        slotDateTime &&
-        !isPast(normalizedDate, slot, timeZone) &&
-        slotDateTime <= cutoffDate
-      );
-    });
-
-    const isSlotAvailable = (time) => {
-      const matching = validReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
-      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-      return confirmed.length < maxReservations;
-    };
-
-    const findNextAvailableSlots = (centerTime, maxSteps = 96) => {
-      let before = null;
-      let after = null;
-      let forward = centerTime;
-      let backward = centerTime;
-      for (let i = 1; i <= maxSteps; i++) {
-        forward = forward.plus({ minutes: 15 });
-        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
-          after = forward.toFormat('HH:mm');
-          break;
-        }
-      }
-      for (let i = 1; i <= maxSteps; i++) {
-        backward = backward.minus({ minutes: 15 });
-        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
-          before = backward.toFormat('HH:mm');
-          break;
-        }
-      }
-      return { before, after };
-    };
-
+    // Lookup reservation by code
     const match = await airtable(tableName)
       .select({
         filterByFormula: `AND({rawConfirmationCode} = '${normalizedCode}', {restaurantId} = '${restaurantId}')`,
@@ -122,55 +63,43 @@ export const changeReservation = async (req) => {
       .firstPage();
 
     if (match.length === 0) {
-      console.warn('[WARN][changeReservation] No matching reservation for code:', normalizedCode);
       return {
         status: 404,
         body: { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode }
       };
     }
 
+    // Re-pull all reservations for target date
+    const allForDate = await airtable(tableName)
+      .select({
+        filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
+      })
+      .all();
+
+    // Check for block
     const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
-      const alternatives = findNextAvailableSlots(targetDateTime);
       return {
         status: 409,
-        body: {
-          type: 'reservation.unavailable',
-          available: false,
-          reason: 'blocked',
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          alternatives,
-          restaurantId
-        }
+        body: { type: 'reservation.unavailable', available: false, reason: 'blocked', date: normalizedDate, timeSlot: normalizedTime }
       };
     }
 
-    const sameSlot = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const confirmedCount = sameSlot.filter(r => r.fields.status?.toLowerCase() === 'confirmed').length;
-
-    if (confirmedCount >= maxReservations) {
-      const alternatives = findNextAvailableSlots(targetDateTime);
+    // Capacity check
+    const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+    if (confirmedReservations.length >= maxReservations) {
       return {
         status: 409,
-        body: {
-          type: 'reservation.unavailable',
-          available: false,
-          reason: 'full',
-          remaining: Math.max(0, maxReservations - confirmedCount),
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          alternatives,
-          restaurantId
-        }
+        body: { type: 'reservation.unavailable', available: false, reason: 'full', date: normalizedDate, timeSlot: normalizedTime }
       };
     }
 
+    // Perform update with enforced restaurantId
     await airtable(tableName).update(match[0].id, {
       date: normalizedDate,
       timeSlot: normalizedTime,
-      restaurantId
+      restaurantId: config.restaurantId
     });
 
     await sendConfirmationEmail({ type: 'change', confirmationCode: normalizedCode, config });
@@ -178,18 +107,15 @@ export const changeReservation = async (req) => {
     return {
       status: 200,
       body: {
-        type: 'reservation.change', // <-- Standardized for broadcast
+        type: 'reservation.change',
         confirmationCode: normalizedCode,
         newDate: normalizedDate,
         newTimeSlot: normalizedTime,
-        restaurantId
+        restaurantId: config.restaurantId
       }
     };
   } catch (err) {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
-    return {
-      status: 500,
-      body: { type: 'reservation.error', error: 'internal_error' }
-    };
+    return { status: 500, body: { type: 'reservation.error', error: 'internal_error' } };
   }
 };
