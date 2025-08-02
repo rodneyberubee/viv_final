@@ -80,24 +80,36 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // Helper: Try to format, otherwise return raw
+      // Helper: Try to parse, else fallback to raw
       const safeParse = (val, parser, fmt) => {
         try {
           const parsedVal = parser(val, 2025, 'UTC');
           return parsedVal && typeof parsedVal.toFormat === 'function'
             ? parsedVal.toFormat(fmt)
-            : val; // fallback: keep raw string
+            : val;
         } catch {
-          return val; // fallback: keep raw string
+          return val;
         }
       };
 
-      // Normalize date/time or fallback to raw
+      // Normalize + retain raw values for fallback downstream
       if (parsed.parsed) {
-        if (parsed.parsed.date) parsed.parsed.date = safeParse(parsed.parsed.date, parseFlexibleDate, 'yyyy-MM-dd');
-        if (parsed.parsed.newDate) parsed.parsed.newDate = safeParse(parsed.parsed.newDate, parseFlexibleDate, 'yyyy-MM-dd');
-        if (parsed.parsed.timeSlot) parsed.parsed.timeSlot = safeParse(parsed.parsed.timeSlot, parseFlexibleTime, 'HH:mm');
-        if (parsed.parsed.newTimeSlot) parsed.parsed.newTimeSlot = safeParse(parsed.parsed.newTimeSlot, parseFlexibleTime, 'HH:mm');
+        if (parsed.parsed.date) {
+          parsed.parsed.rawDate = parsed.parsed.date;
+          parsed.parsed.date = safeParse(parsed.parsed.date, parseFlexibleDate, 'yyyy-MM-dd');
+        }
+        if (parsed.parsed.newDate) {
+          parsed.parsed.rawNewDate = parsed.parsed.newDate;
+          parsed.parsed.newDate = safeParse(parsed.parsed.newDate, parseFlexibleDate, 'yyyy-MM-dd');
+        }
+        if (parsed.parsed.timeSlot) {
+          parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
+          parsed.parsed.timeSlot = safeParse(parsed.parsed.timeSlot, parseFlexibleTime, 'HH:mm');
+        }
+        if (parsed.parsed.newTimeSlot) {
+          parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
+          parsed.parsed.newTimeSlot = safeParse(parsed.parsed.newTimeSlot, parseFlexibleTime, 'HH:mm');
+        }
       }
 
       // Adjust type based on completion
