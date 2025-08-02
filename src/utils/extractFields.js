@@ -82,25 +82,31 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
+      // Normalize and preserve raw values for fallback
       if (parsed.parsed) {
         if (parsed.parsed.date) {
           parsed.parsed.rawDate = parsed.parsed.date;
-          parsed.parsed.date = safeFormat(parseFlexibleDate(parsed.parsed.date, 2025), 'yyyy-MM-dd');
+          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025);
+          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd');
         }
         if (parsed.parsed.newDate) {
           parsed.parsed.rawNewDate = parsed.parsed.newDate;
-          parsed.parsed.newDate = safeFormat(parseFlexibleDate(parsed.parsed.newDate, 2025), 'yyyy-MM-dd');
+          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025);
+          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd');
         }
         if (parsed.parsed.timeSlot) {
           parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
-          parsed.parsed.timeSlot = safeFormat(parseFlexibleTime(parsed.parsed.timeSlot), 'HH:mm');
+          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot);
+          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm');
         }
         if (parsed.parsed.newTimeSlot) {
           parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
-          parsed.parsed.newTimeSlot = safeFormat(parseFlexibleTime(parsed.parsed.newTimeSlot), 'HH:mm');
+          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
+          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm');
         }
       }
 
+      // Recompute type based on completeness
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
