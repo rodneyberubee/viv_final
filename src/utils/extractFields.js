@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js'; // Reintroduced for safe string formatting
+import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js';
 dotenv.config();
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -82,23 +82,36 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // ✅ Normalize date/time to consistent strings for reservation.js to parse
+      // Helper to safely format Luxon objects or fall back to raw strings
+      const safeFormat = (val, fmt) => {
+        try {
+          return val && typeof val === 'object' && typeof val.toFormat === 'function'
+            ? val.toFormat(fmt)
+            : typeof val === 'string'
+            ? val
+            : null;
+        } catch {
+          return null;
+        }
+      };
+
+      // Normalize date/time to consistent strings for downstream parsing
       if (parsed.parsed) {
         if (parsed.parsed.date) {
           const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
-          parsed.parsed.date = parsedDate ? parsedDate.toFormat('yyyy-MM-dd') : null;
+          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd');
         }
         if (parsed.parsed.newDate) {
           const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025, 'UTC');
-          parsed.parsed.newDate = parsedNewDate ? parsedNewDate.toFormat('yyyy-MM-dd') : null;
+          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd');
         }
         if (parsed.parsed.timeSlot) {
           const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot, 'UTC');
-          parsed.parsed.timeSlot = parsedTime ? parsedTime.toFormat('HH:mm') : null;
+          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm');
         }
         if (parsed.parsed.newTimeSlot) {
           const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot, 'UTC');
-          parsed.parsed.newTimeSlot = parsedNewTime ? parsedNewTime.toFormat('HH:mm') : null;
+          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm');
         }
       }
 
