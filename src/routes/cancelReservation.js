@@ -4,7 +4,7 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
-  const { confirmationCode } = req.body;
+  const confirmationCode = typeof req.body.confirmationCode === 'string' ? req.body.confirmationCode.trim() : null;
 
   if (!confirmationCode) {
     console.error('[ERROR] Missing confirmation code in body.');
