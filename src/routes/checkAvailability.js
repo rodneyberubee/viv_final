@@ -21,8 +21,14 @@ export const checkAvailability = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    const normalizedDate = date.trim();
-    const normalizedTime = timeSlot.toString().trim();
+    const normalizedDate = typeof date === 'string' ? date.trim() : date;
+    const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : timeSlot;
+
+    // Early guard for missing/invalid inputs
+    if (!normalizedDate || !normalizedTime) {
+      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time' } };
+    }
+
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
