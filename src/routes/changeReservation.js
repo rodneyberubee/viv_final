@@ -10,10 +10,11 @@ export const changeReservation = async (req) => {
     return { status: 400, body: { type: 'reservation.error', error: 'missing_restaurant_id' } };
   }
 
-  const { confirmationCode, newDate, newTimeSlot } = req.body;
+  // Added support for raw fallbacks
+  const { confirmationCode, newDate, newTimeSlot, rawDate, rawTimeSlot } = req.body;
   const normalizedCode = typeof confirmationCode === 'string' ? confirmationCode.trim() : confirmationCode;
-  const normalizedDate = typeof newDate === 'string' ? newDate.trim() : newDate;
-  const normalizedTime = typeof newTimeSlot === 'string' ? newTimeSlot.trim() : newTimeSlot;
+  const normalizedDate = typeof newDate === 'string' ? newDate.trim() : (rawDate || newDate);
+  const normalizedTime = typeof newTimeSlot === 'string' ? newTimeSlot.trim() : (rawTimeSlot || newTimeSlot);
 
   if (!normalizedCode || !normalizedDate || !normalizedTime) {
     console.error('[ERROR][changeReservation] One or more required fields missing');
