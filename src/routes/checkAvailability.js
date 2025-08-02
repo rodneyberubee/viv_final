@@ -27,12 +27,6 @@ export const checkAvailability = async (req) => {
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
-    console.log('[DEBUG][checkAvailability] Incoming:', { date: normalizedDate, timeSlot: normalizedTime, restaurantId });
-    console.log('[DEBUG][checkAvailability] Parsed DateTime:', currentTime?.toISO() || 'Invalid');
-    console.log('[DEBUG][checkAvailability] Now:', now.toISO());
-    console.log('[DEBUG][checkAvailability] Cutoff date:', cutoffDate.toISO());
-    console.log('[DEBUG][checkAvailability] TimeZone used:', timeZone);
-
     if (!currentTime) {
       return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time' } };
     }
@@ -44,7 +38,7 @@ export const checkAvailability = async (req) => {
     }
 
     // Query only for this restaurant + date
-    const formula = `AND({restaurantId} = '${restaurantId}', {dateFormatted} = '${normalizedDate}')`;
+    const formula = `AND({restaurantId} = '${config.restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
 
     // Helper: check if a time slot is available (ignores blocked)
@@ -92,7 +86,7 @@ export const checkAvailability = async (req) => {
           reason: 'blocked',
           date: normalizedDate,
           timeSlot: normalizedTime,
-          restaurantId,
+          restaurantId: config.restaurantId,
           alternatives,
           remaining: 0
         }
@@ -112,9 +106,6 @@ export const checkAvailability = async (req) => {
       );
     });
 
-    console.log('[DEBUG][checkAvailability] Total fetched reservations:', allReservations.length);
-    console.log('[DEBUG][checkAvailability] Valid reservations after filtering:', validReservations.length);
-
     const matchingSlotReservations = validReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const confirmedCount = matchingSlotReservations.filter(r => (r.fields.status || '').trim().toLowerCase() === 'confirmed').length;
     const remaining = maxReservations - confirmedCount;
@@ -129,7 +120,7 @@ export const checkAvailability = async (req) => {
           reason: 'full',
           date: normalizedDate,
           timeSlot: normalizedTime,
-          restaurantId,
+          restaurantId: config.restaurantId,
           alternatives,
           remaining: 0
         }
@@ -143,7 +134,7 @@ export const checkAvailability = async (req) => {
         available: true,
         date: normalizedDate,
         timeSlot: normalizedTime,
-        restaurantId,
+        restaurantId: config.restaurantId,
         remaining
       }
     };
