@@ -1,9 +1,9 @@
-import express from 'express';
-import crypto from 'crypto';
-import Airtable from 'airtable';
-import dotenv from 'dotenv';
-import { Resend } from 'resend';
-import jwt from 'jsonwebtoken';
+const express = require('express');
+const crypto = require('crypto');
+const Airtable = require('airtable');
+const dotenv = require('dotenv');
+const { Resend } = require('resend');
+const jwt = require('jsonwebtoken');
 
 dotenv.config();
 const router = express.Router();
@@ -20,7 +20,6 @@ router.post('/', express.json(), async (req, res) => {
   if (!email) return res.status(400).json({ error: 'missing_email' });
 
   try {
-    // Check if email exists in restaurantMap
     const records = await base('restaurantMap')
       .select({ filterByFormula: `{email} = '${String(email).replace(/'/g, "\\'")}'` })
       .firstPage();
@@ -34,16 +33,13 @@ router.post('/', express.json(), async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
 
-    // Save token + expiry in Airtable
     await base('restaurantMap').update(record.id, {
       loginToken: token,
       loginTokenExpires: new Date(expiresAt).toISOString()
     });
 
-    // Build link to the dynamic dashboard page
     const loginUrl = `${process.env.FRONTEND_URL}/dashboard/${restaurantId}?token=${token}`;
 
-    // Send email using Resend
     await resend.emails.send({
       from: process.env.RESEND_FROM,
       to: email,
@@ -62,7 +58,6 @@ router.post('/', express.json(), async (req, res) => {
   }
 });
 
-// Backward compatibility alias for POST /api/auth/login/request
 router.post('/request', (req, res, next) => {
   req.url = '/';
   next();
@@ -95,20 +90,17 @@ router.post('/verify', express.json(), async (req, res) => {
       return res.status(400).json({ error: 'token_expired' });
     }
 
-    // Clear magic link (single-use)
     await base('restaurantMap').update(record.id, {
       loginToken: '',
       loginTokenExpires: ''
     });
 
-    // Prepare JWT payload
     const payload = {
       restaurantId: record.fields.restaurantId,
       email: record.fields.email,
       name: record.fields.name || null
     };
 
-    // Sign a JWT (valid for 1 day)
     const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 
     console.log(`[AUTH] JWT issued for ${record.fields.restaurantId} (${record.fields.email})`);
@@ -131,7 +123,7 @@ router.post('/refresh', express.json(), (req, res) => {
   if (!process.env.JWT_SECRET) return res.status(500).json({ error: 'server_config_error' });
 
   try {
-    const decoded = jwt.verify(oldToken, process.env.JWT_SECRET) as any;
+    const decoded = jwt.verify(oldToken, process.env.JWT_SECRET);
     const { restaurantId, email, name } = decoded;
     const newToken = jwt.sign({ restaurantId, email, name }, process.env.JWT_SECRET, { expiresIn: '1d' });
     return res.status(200).json({ token: newToken });
@@ -141,4 +133,4 @@ router.post('/refresh', express.json(), (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;
