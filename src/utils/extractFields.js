@@ -1,7 +1,6 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js'; // ✅ Using centralized helpers
-
+// Removed parseFlexibleDate and parseFlexibleTime to avoid double-parsing here
 dotenv.config();
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -83,21 +82,7 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // ✅ Use dateHelpers for centralized parsing (default to UTC)
-      if (parsed.parsed) {
-        if (parsed.parsed.date) {
-          parsed.parsed.date = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
-        }
-        if (parsed.parsed.newDate) {
-          parsed.parsed.newDate = parseFlexibleDate(parsed.parsed.newDate, 2025, 'UTC');
-        }
-        if (parsed.parsed.timeSlot) {
-          parsed.parsed.timeSlot = parseFlexibleTime(parsed.parsed.timeSlot, 'UTC');
-        }
-        if (parsed.parsed.newTimeSlot) {
-          parsed.parsed.newTimeSlot = parseFlexibleTime(parsed.parsed.newTimeSlot, 'UTC');
-        }
-      }
+      // Do NOT pre-parse date/time here. Let reservation.js handle it with the correct timeZone.
 
       // Adjust type based on completion
       if (parsed.intent === 'reservation') {
