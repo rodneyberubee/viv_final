@@ -10,11 +10,7 @@ export const cancelReservation = async (req) => {
     console.error('[ERROR] Missing confirmation code in body.');
     return {
       status: 400,
-      body: {
-        type: 'reservation.error',
-        error: 'missing_confirmation_code',
-        restaurantId
-      }
+      body: { type: 'reservation.error', error: 'missing_confirmation_code', restaurantId }
     };
   }
 
@@ -23,11 +19,7 @@ export const cancelReservation = async (req) => {
     console.error('[ERROR] No config found for restaurantId:', restaurantId);
     return {
       status: 404,
-      body: {
-        type: 'reservation.error',
-        error: 'config_not_found',
-        restaurantId
-      }
+      body: { type: 'reservation.error', error: 'config_not_found', restaurantId }
     };
   }
 
@@ -35,46 +27,51 @@ export const cancelReservation = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    // 🔄 Add restaurantId to ensure only the correct restaurant's reservations are canceled
+    // Strict lookup: confirmationCode + restaurantId
     const formula = `AND({rawConfirmationCode} = '${confirmationCode}', {restaurantId} = '${restaurantId}')`;
-
     const records = await airtable(tableName)
-      .select({
-        filterByFormula: formula,
-        fields: ['name', 'date', 'timeSlot', 'status']
-      })
+      .select({ filterByFormula: formula, fields: ['name', 'date', 'timeSlot', 'status'] })
       .all();
 
     if (records.length === 0) {
       console.warn('[WARN] No reservation found for confirmationCode:', confirmationCode);
       return {
         status: 404,
-        body: {
-          type: 'reservation.error',
-          error: 'not_found',
-          confirmationCode,
-          restaurantId
-        }
+        body: { type: 'reservation.error', error: 'not_found', confirmationCode, restaurantId }
       };
     }
 
     const reservation = records[0];
+    const currentStatus = reservation.fields.status?.trim().toLowerCase();
 
-    await airtable(tableName).destroy(reservation.id);
+    // Guard against re-canceling or deleting blocked reservations
+    if (currentStatus === 'canceled') {
+      console.warn('[WARN] Attempted to cancel an already canceled reservation:', confirmationCode);
+      return {
+        status: 409,
+        body: { type: 'reservation.error', error: 'already_canceled', confirmationCode, restaurantId }
+      };
+    }
 
-    // ✅ Trigger cancellation email
-    await sendConfirmationEmail({
-      type: 'cancel',
-      confirmationCode,
-      config
-    });
+    if (currentStatus === 'blocked') {
+      console.warn('[WARN] Attempted to cancel a blocked slot:', confirmationCode);
+      return {
+        status: 409,
+        body: { type: 'reservation.error', error: 'cannot_cancel_blocked_slot', confirmationCode, restaurantId }
+      };
+    }
+
+    // Soft cancel: mark as canceled instead of deleting
+    await airtable(tableName).update(reservation.id, { status: 'canceled' });
+
+    await sendConfirmationEmail({ type: 'cancel', confirmationCode, config });
 
     return {
       status: 200,
       body: {
-        type: 'reservation.cancel', // <-- standardized for frontend broadcast
+        type: 'reservation.cancel',
         confirmationCode,
-        restaurantId,
+        restaurantId: config.restaurantId,
         canceledReservation: {
           name: reservation.fields.name,
           date: reservation.fields.date,
@@ -86,11 +83,7 @@ export const cancelReservation = async (req) => {
     console.error('[ERROR][cancelReservation]', err);
     return {
       status: 500,
-      body: {
-        type: 'reservation.error',
-        error: 'internal_error',
-        restaurantId
-      }
+      body: { type: 'reservation.error', error: 'internal_error', restaurantId }
     };
   }
 };
