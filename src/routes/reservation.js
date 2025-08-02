@@ -6,18 +6,59 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
 export const createReservation = async (parsed, config) => {
-  const { name, partySize, contactInfo, date, timeSlot, restaurantId } = parsed;
-  const { baseId, tableName } = config;
+  let { name, partySize, contactInfo, date, timeSlot } = parsed;
+  const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
+
+  // Force restaurantId from config to prevent spoofing
+  const restaurantId = config.restaurantId;
+
+  // Normalize values
+  const normalizedDate = date.trim();
+  const normalizedTime = timeSlot.toString().trim();
+  const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+  const now = getCurrentDateTime(timeZone).startOf('day');
+  const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
+
+  // Validate again at write-time
+  if (!reservationTime) {
+    throw new Error('invalid_date_or_time');
+  }
+  if (isPast(normalizedDate, normalizedTime, timeZone)) {
+    throw new Error('cannot_book_in_past');
+  }
+  if (reservationTime > cutoffDate) {
+    throw new Error('outside_reservation_window');
+  }
 
   const base = airtableClient.base(baseId);
-  const confirmationCode = Math.random().toString(36).substr(2, 9);
 
+  // Re-query for slot availability and block check
+  const reservations = await base(tableName)
+    .select({
+      filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
+      fields: ['status', 'timeSlot']
+    })
+    .all();
+
+  const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+  const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+  if (isBlocked) {
+    throw new Error('blocked_slot');
+  }
+
+  const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+  if (confirmedReservations.length >= maxReservations) {
+    throw new Error('slot_full');
+  }
+
+  // If all checks pass, create reservation
+  const confirmationCode = Math.random().toString(36).substr(2, 9);
   const fields = {
     name,
     partySize,
     contactInfo,
-    date,
-    timeSlot,
+    date: normalizedDate,
+    timeSlot: normalizedTime,
     restaurantId,
     rawConfirmationCode: confirmationCode,
     status: 'confirmed'
@@ -169,13 +210,13 @@ export const reservation = async (req) => {
       };
     }
 
-    const { confirmationCode } = await createReservation(parsed, config);
+    const { confirmationCode } = await createReservation(parsed, { ...config, restaurantId });
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
     return {
       status: 201,
       body: {
-        type: 'reservation.create', // <-- changed from .complete
+        type: 'reservation.create',
         confirmationCode,
         name: parsed.name,
         partySize: parsed.partySize,
@@ -185,6 +226,6 @@ export const reservation = async (req) => {
     };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
-    return { status: 500, body: { type: 'reservation.error', error: 'internal_server_error' } };
+    return { status: 500, body: { type: 'reservation.error', error: err.message || 'internal_server_error' } };
   }
 };
