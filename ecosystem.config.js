@@ -1,11 +1,10 @@
 module.exports = {
   apps: [
     {
-      name: "viv-final",
-      script: "./src/server.js",
+      name: "viv-midd",
+      script: "./src/server.cjs",
       watch: true,
-      interpreter: "node",
-      node_args: "--experimental-specifier-resolution=node"
+      interpreter: "node"
     }
   ],
 };
