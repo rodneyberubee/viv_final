@@ -11,9 +11,9 @@ export const changeReservation = async (req) => {
   }
 
   const { confirmationCode, newDate, newTimeSlot } = req.body;
-  const normalizedCode = confirmationCode?.trim();
-  const normalizedDate = newDate?.trim();
-  const normalizedTime = newTimeSlot?.trim();
+  const normalizedCode = typeof confirmationCode === 'string' ? confirmationCode.trim() : confirmationCode;
+  const normalizedDate = typeof newDate === 'string' ? newDate.trim() : newDate;
+  const normalizedTime = typeof newTimeSlot === 'string' ? newTimeSlot.trim() : newTimeSlot;
 
   if (!normalizedCode || !normalizedDate || !normalizedTime) {
     console.error('[ERROR][changeReservation] One or more required fields missing');
