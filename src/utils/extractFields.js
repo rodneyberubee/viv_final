@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
-// Removed parseFlexibleDate and parseFlexibleTime to avoid double-parsing here
+import { parseFlexibleDate, parseFlexibleTime } from '../utils/dateHelpers.js'; // Reintroduced for safe string formatting
 dotenv.config();
 
 export const extractFields = async (vivInput, restaurantId) => {
@@ -82,7 +82,25 @@ export const extractFields = async (vivInput, restaurantId) => {
 
       let normalizedType = parsed.type;
 
-      // Do NOT pre-parse date/time here. Let reservation.js handle it with the correct timeZone.
+      // ✅ Normalize date/time to consistent strings for reservation.js to parse
+      if (parsed.parsed) {
+        if (parsed.parsed.date) {
+          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025, 'UTC');
+          parsed.parsed.date = parsedDate ? parsedDate.toFormat('yyyy-MM-dd') : null;
+        }
+        if (parsed.parsed.newDate) {
+          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025, 'UTC');
+          parsed.parsed.newDate = parsedNewDate ? parsedNewDate.toFormat('yyyy-MM-dd') : null;
+        }
+        if (parsed.parsed.timeSlot) {
+          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot, 'UTC');
+          parsed.parsed.timeSlot = parsedTime ? parsedTime.toFormat('HH:mm') : null;
+        }
+        if (parsed.parsed.newTimeSlot) {
+          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot, 'UTC');
+          parsed.parsed.newTimeSlot = parsedNewTime ? parsedNewTime.toFormat('HH:mm') : null;
+        }
+      }
 
       // Adjust type based on completion
       if (parsed.intent === 'reservation') {
