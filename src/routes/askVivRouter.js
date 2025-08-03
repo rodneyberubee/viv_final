@@ -28,6 +28,7 @@ export const askVivRouter = async (req, res) => {
   let parsed = {};
   let messages = [];
 
+  // Extract messages from frontend
   if (Array.isArray(req.body.messages)) {
     messages = req.body.messages;
   } else if (req.body.userMessage) {
@@ -39,14 +40,13 @@ export const askVivRouter = async (req, res) => {
     }];
   }
 
+  // AI parsing
   if (messages.length > 0) {
     const aiParsed = await extractFields({ messages }, restaurantId);
-
     if (!aiParsed) {
       console.warn('[askVivRouter] ⚠️ extractFields returned null');
       return res.status(200).json({ type: 'chat', parsed: {}, error: false });
     }
-
     parsed = {
       ...aiParsed.parsed,
       type: aiParsed.type,
@@ -70,6 +70,7 @@ export const askVivRouter = async (req, res) => {
   };
 
   try {
+    // Handle incomplete cases (ask for missing fields)
     if (parsed.type.endsWith('.incomplete')) {
       const { intent, restaurantId, openTime, closeTime, ...safeParsed } = parsed;
 
@@ -79,14 +80,16 @@ export const askVivRouter = async (req, res) => {
         user: messages[messages.length - 1]?.content || ''
       };
 
-      // Include open/close times if available
+      // Preserve business hours if available
       if (openTime) response.openTime = openTime;
       if (closeTime) response.closeTime = closeTime;
-
       console.log('[askVivRouter] Returning incomplete response with hours:', JSON.stringify(response, null, 2));
+
       return res.status(200).json(response);
     }
 
+    // Route based on type
+    let result;
     switch (parsed.type) {
       case 'chat':
         console.log('[askVivRouter] Handling chat');
@@ -98,27 +101,23 @@ export const askVivRouter = async (req, res) => {
 
       case 'reservation.complete':
         console.log('[askVivRouter] Routing to reservation');
-        const result = await reservation(newReq);
-        console.log('[askVivRouter] Reservation result:', JSON.stringify(result.body, null, 2));
-        return res.status(result.status || 200).json(result.body);
+        result = await reservation(newReq);
+        break;
 
       case 'reservation.change':
         console.log('[askVivRouter] Routing to changeReservation');
-        const changeResult = await changeReservation(newReq);
-        console.log('[askVivRouter] Change result:', JSON.stringify(changeResult.body, null, 2));
-        return res.status(changeResult.status || 200).json(changeResult.body);
+        result = await changeReservation(newReq);
+        break;
 
       case 'reservation.cancel':
         console.log('[askVivRouter] Routing to cancelReservation');
-        const cancelResult = await cancelReservation(newReq);
-        console.log('[askVivRouter] Cancel result:', JSON.stringify(cancelResult.body, null, 2));
-        return res.status(cancelResult.status || 200).json(cancelResult.body);
+        result = await cancelReservation(newReq);
+        break;
 
       case 'availability.check':
         console.log('[askVivRouter] Routing to checkAvailability');
-        const availabilityResult = await checkAvailability(newReq);
-        console.log('[askVivRouter] Availability result:', JSON.stringify(availabilityResult.body, null, 2));
-        return res.status(availabilityResult.status || 200).json(availabilityResult.body);
+        result = await checkAvailability(newReq);
+        break;
 
       default:
         console.warn('[askVivRouter] ⚠️ Unrecognized type:', parsed.type);
@@ -129,6 +128,22 @@ export const askVivRouter = async (req, res) => {
           user: messages[messages.length - 1]?.content || ''
         });
     }
+
+    // Ensure open/close hours are preserved in the final response
+    if (result?.body) {
+      if (!result.body.openTime && parsed.openTime) {
+        console.warn('[askVivRouter] Adding missing openTime from parsed');
+        result.body.openTime = parsed.openTime;
+      }
+      if (!result.body.closeTime && parsed.closeTime) {
+        console.warn('[askVivRouter] Adding missing closeTime from parsed');
+        result.body.closeTime = parsed.closeTime;
+      }
+    }
+
+    console.log(`[askVivRouter] Final result for ${parsed.type}:`, JSON.stringify(result.body, null, 2));
+    return res.status(result.status || 200).json(result.body);
+
   } catch (error) {
     console.error('[askVivRouter] ❌ Uncaught error:', error);
     return res.status(500).json({
