@@ -55,18 +55,27 @@ export const changeReservation = async (req) => {
     return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
   }
 
-  // Business hours validation
+  // Business hours validation (strong enforcement)
   const weekday = targetDateTime.toFormat('cccc').toLowerCase();
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
-  if (openTime && closeTime) {
-    const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
-    const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-    if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
-    }
+
+  if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+    return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+  }
+
+  let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+  let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+
+  // Handle overnight hours (close after midnight)
+  if (closeDateTime <= openDateTime) {
+    closeDateTime = closeDateTime.plus({ days: 1 });
+  }
+
+  if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
+    return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
   }
 
   try {
@@ -91,7 +100,16 @@ export const changeReservation = async (req) => {
       })
       .all();
 
+    const isWithinBusinessHours = (time) => {
+      let slotDT = parseDateTime(normalizedDate, time, timeZone);
+      if (closeDateTime <= openDateTime) {
+        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
+      }
+      return slotDT >= openDateTime && slotDT <= closeDateTime;
+    };
+
     const isSlotAvailable = (time) => {
+      if (!isWithinBusinessHours(time)) return false;
       const matching = allForDate.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
@@ -104,15 +122,17 @@ export const changeReservation = async (req) => {
       let backward = centerTime;
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
-        if (isSlotAvailable(forward.toFormat('HH:mm'))) {
-          after = forward.toFormat('HH:mm');
+        const forwardTime = forward.toFormat('HH:mm');
+        if (isSlotAvailable(forwardTime)) {
+          after = forwardTime;
           break;
         }
       }
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
-        if (isSlotAvailable(backward.toFormat('HH:mm'))) {
-          before = backward.toFormat('HH:mm');
+        const backwardTime = backward.toFormat('HH:mm');
+        if (isSlotAvailable(backwardTime)) {
+          before = backwardTime;
           break;
         }
       }
