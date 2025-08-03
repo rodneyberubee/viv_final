@@ -47,7 +47,17 @@ export const checkAvailability = async (req) => {
     const closeTime = config[closeKey];
 
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
+      const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
+      const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
+      return { 
+        status: 400, 
+        body: { 
+          type: 'availability.check.error', 
+          error: 'outside_business_hours', 
+          openTime: formattedOpen, 
+          closeTime: formattedClose 
+        } 
+      };
     }
 
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
@@ -59,7 +69,17 @@ export const checkAvailability = async (req) => {
     }
 
     if (currentTime < openDateTime || currentTime > closeDateTime) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
+      const formattedOpen = openDateTime.toFormat('hh:mm a');
+      const formattedClose = closeDateTime.toFormat('hh:mm a');
+      return { 
+        status: 400, 
+        body: { 
+          type: 'availability.check.error', 
+          error: 'outside_business_hours',
+          openTime: formattedOpen,
+          closeTime: formattedClose
+        } 
+      };
     }
 
     // Query only for this restaurant + date
