@@ -11,10 +11,17 @@ export const changeReservation = async (req) => {
   }
 
   // Added support for raw fallbacks
-  const { confirmationCode, newDate, newTimeSlot, rawDate, rawTimeSlot } = req.body;
-  const normalizedCode = typeof confirmationCode === 'string' ? confirmationCode.trim() : confirmationCode;
+  const { confirmationCode, newDate, newTimeSlot, rawDate, rawTimeSlot, name } = req.body;
+  let normalizedCode = typeof confirmationCode === 'string' ? confirmationCode.trim() : confirmationCode;
   const normalizedDate = typeof newDate === 'string' ? newDate.trim() : (rawDate || newDate);
   const normalizedTime = typeof newTimeSlot === 'string' ? newTimeSlot.trim() : (rawTimeSlot || newTimeSlot);
+
+  // Fallback: If confirmationCode is missing but name looks like one, use it
+  const isLikelyConfirmationCode = (val) => typeof val === 'string' && /^[a-zA-Z0-9]{6,12}$/.test(val);
+  if (!normalizedCode && isLikelyConfirmationCode(name)) {
+    normalizedCode = name;
+    console.log('[DEBUG][changeReservation] Using name as confirmationCode fallback:', normalizedCode);
+  }
 
   if (!normalizedCode || !normalizedDate || !normalizedTime) {
     console.error('[ERROR][changeReservation] One or more required fields missing');
