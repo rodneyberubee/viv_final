@@ -4,10 +4,10 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 import { BroadcastChannel } from 'broadcast-channel'; // NEW
 
 // Helper: Broadcast updates to dashboard
-const broadcastReservationUpdate = async (type, restaurantId) => {
+const broadcastReservationUpdate = async (event, restaurantId) => {
   try {
     const bc = new BroadcastChannel('reservations');
-    await bc.postMessage({ type, restaurantId, timestamp: Date.now() });
+    await bc.postMessage({ event, restaurantId, refresh: 1, timestamp: Date.now() });
     await bc.close();
   } catch (err) {
     console.error('[Broadcast] Failed to send update:', err);
@@ -44,7 +44,7 @@ export const cancelReservation = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   try {
-    // Strict lookup: confirmationCode + restaurantId
+    // Strict lookup: confirmationCode + restaurantId (case-insensitive)
     const formula = `AND(LOWER({rawConfirmationCode}) = '${confirmationCode}', {restaurantId} = '${restaurantId}')`;
     const records = await airtable(tableName)
       .select({ filterByFormula: formula, fields: ['name', 'date', 'timeSlot', 'status'] })
@@ -81,11 +81,15 @@ export const cancelReservation = async (req) => {
     // Soft cancel: mark as canceled instead of deleting
     await airtable(tableName).update(reservation.id, { status: 'canceled' });
 
-    await sendConfirmationEmail({ type: 'cancel', confirmationCode, config }).catch(err =>
-      console.error('[WARN] Failed to send cancellation email:', err)
-    );
+    // Attempt to send cancellation email
+    try {
+      await sendConfirmationEmail({ type: 'cancel', confirmationCode, config });
+    } catch (err) {
+      console.error('[WARN] Failed to send cancellation email:', err);
+    }
 
-    await broadcastReservationUpdate('reservation.cancel', restaurantId); // notify dashboards
+    // Notify dashboards after success
+    await broadcastReservationUpdate('reservation.cancel', restaurantId);
 
     return {
       status: 200,
