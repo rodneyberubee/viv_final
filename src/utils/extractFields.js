@@ -17,8 +17,13 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- Dates MUST be in ISO format: yyyy-MM-dd (e.g., 2025-08-02).',
     '- Times MUST be in 24-hour format: HH:mm (e.g., 21:30).',
     '',
+    'Classification Rule:',
+    '- Set `type` to `reservation.complete` if ALL required fields are present.',
+    '- Set `type` to `reservation.incomplete` if ANY required field is missing.',
+    '- Do the same for other intents (e.g., `reservation.change` vs `reservation.change.incomplete`).',
+    '',
     'Your job is to:',
-    '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability"',
+    '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability".',
     '- Output valid JSON starting on the first line like:',
     '{ "intent": "reservation", "type": "reservation.incomplete", "parsed": { "name": null, "partySize": null, "contactInfo": null, "date": null, "timeSlot": null } }',
     '',
@@ -119,7 +124,7 @@ export const extractFields = async (vivInput, restaurantId) => {
         console.warn('[DEBUG][extractFields] Missing parsed object in AI response');
       }
 
-      // Recompute type based on completeness
+      // Backend override for type if necessary
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
