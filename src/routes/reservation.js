@@ -5,6 +5,13 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
+// Helper: Build consistent business hours error details
+const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
+  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
+  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
+  return { openTime: formattedOpen, closeTime: formattedClose };
+};
+
 export const createReservation = async (parsed, config) => {
   let { name, partySize, contactInfo, date, timeSlot, rawDate, rawTimeSlot } = parsed;
   const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
@@ -33,10 +40,8 @@ export const createReservation = async (parsed, config) => {
   const closeTime = config[closeKey];
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-    const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
-    const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
     const err = new Error('outside_business_hours');
-    err.details = { openTime: formattedOpen, closeTime: formattedClose };
+    err.details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     throw err;
   }
 
@@ -49,10 +54,8 @@ export const createReservation = async (parsed, config) => {
   }
 
   if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-    const formattedOpen = openDateTime.toFormat('hh:mm a');
-    const formattedClose = closeDateTime.toFormat('hh:mm a');
     const err = new Error('outside_business_hours');
-    err.details = { openTime: formattedOpen, closeTime: formattedClose };
+    err.details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     throw err;
   }
 
@@ -155,9 +158,8 @@ export const reservation = async (req) => {
     const closeTime = config[closeKey];
 
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
-      const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', openTime: formattedOpen, closeTime: formattedClose } };
+      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...details } };
     }
 
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
@@ -168,9 +170,8 @@ export const reservation = async (req) => {
     }
 
     if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-      const formattedOpen = openDateTime.toFormat('hh:mm a');
-      const formattedClose = closeDateTime.toFormat('hh:mm a');
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', openTime: formattedOpen, closeTime: formattedClose } };
+      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...details } };
     }
 
     const reservations = await base(tableName)
