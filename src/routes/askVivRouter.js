@@ -66,7 +66,7 @@ export const askVivRouter = async (req, res) => {
 
   const newReq = {
     ...req,
-    body: { ...parsed }
+    body: { ...parsed } // prevent mutating req.body directly
   };
 
   try {
@@ -131,19 +131,13 @@ export const askVivRouter = async (req, res) => {
 
     // Ensure open/close hours are preserved in the final response
     if (result?.body) {
-      if (!result.body.openTime && parsed.openTime) {
-        console.warn('[askVivRouter] Adding missing openTime from parsed');
-        result.body.openTime = parsed.openTime;
+      if (!result.body.openTime) {
+        result.body.openTime = parsed.openTime || req.body.openTime || null;
+        if (!result.body.openTime) console.warn('[askVivRouter] ⚠️ openTime still missing after merge');
       }
-      if (!result.body.closeTime && parsed.closeTime) {
-        console.warn('[askVivRouter] Adding missing closeTime from parsed');
-        result.body.closeTime = parsed.closeTime;
-      }
-      if (!result.body.openTime || !result.body.closeTime) {
-        console.warn('[askVivRouter] ⚠️ Hours still missing in final response:', {
-          openTime: result.body.openTime,
-          closeTime: result.body.closeTime
-        });
+      if (!result.body.closeTime) {
+        result.body.closeTime = parsed.closeTime || req.body.closeTime || null;
+        if (!result.body.closeTime) console.warn('[askVivRouter] ⚠️ closeTime still missing after merge');
       }
     }
 
