@@ -25,18 +25,27 @@ export const createReservation = async (parsed, config) => {
   if (isPast(normalizedDate, normalizedTime, timeZone)) throw new Error('cannot_book_in_past');
   if (reservationTime > cutoffDate) throw new Error('outside_reservation_window');
 
-  // Business hours validation
+  // Business hours validation (strong enforcement)
   const weekday = reservationTime.toFormat('cccc').toLowerCase();
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
-  if (openTime && closeTime) {
-    const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
-    const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-    if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-      throw new Error('outside_business_hours');
-    }
+
+  if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+    throw new Error('outside_business_hours');
+  }
+
+  let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+  let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+
+  // Handle overnight hours (close after midnight)
+  if (closeDateTime <= openDateTime) {
+    closeDateTime = closeDateTime.plus({ days: 1 });
+  }
+
+  if (reservationTime < openDateTime || reservationTime > closeDateTime) {
+    throw new Error('outside_business_hours');
   }
 
   if (!name?.trim() || !contactInfo?.trim()) {
@@ -136,12 +145,20 @@ export const reservation = async (req) => {
     const closeKey = `${weekday}Close`;
     const openTime = config[openKey];
     const closeTime = config[closeKey];
-    if (openTime && closeTime) {
-      const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
-      const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-      if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-        return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
-      }
+
+    if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+    }
+
+    let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+    let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+
+    if (closeDateTime <= openDateTime) {
+      closeDateTime = closeDateTime.plus({ days: 1 });
+    }
+
+    if (reservationTime < openDateTime || reservationTime > closeDateTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
     }
 
     const reservations = await base(tableName)
@@ -151,7 +168,16 @@ export const reservation = async (req) => {
       })
       .all();
 
+    const isWithinBusinessHours = (time) => {
+      let slotDT = parseDateTime(normalizedDate, time, timeZone);
+      if (closeDateTime <= openDateTime) {
+        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
+      }
+      return slotDT >= openDateTime && slotDT <= closeDateTime;
+    };
+
     const isSlotAvailable = (time, list) => {
+      if (!isWithinBusinessHours(time)) return false;
       const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
       return confirmed.length < maxReservations;
@@ -165,15 +191,17 @@ export const reservation = async (req) => {
 
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
-        if (isSlotAvailable(forward.toFormat('HH:mm'), allReservations)) {
-          after = forward.toFormat('HH:mm');
+        const forwardTime = forward.toFormat('HH:mm');
+        if (isSlotAvailable(forwardTime, allReservations)) {
+          after = forwardTime;
           break;
         }
       }
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
-        if (isSlotAvailable(backward.toFormat('HH:mm'), allReservations)) {
-          before = backward.toFormat('HH:mm');
+        const backwardTime = backward.toFormat('HH:mm');
+        if (isSlotAvailable(backwardTime, allReservations)) {
+          before = backwardTime;
           break;
         }
       }
@@ -235,7 +263,7 @@ export const reservation = async (req) => {
     return {
       status: 201,
       body: {
-        type: 'reservation.complete', // Changed from reservation.create
+        type: 'reservation.complete',
         confirmationCode,
         name: parsed.name,
         partySize: parsed.partySize,
