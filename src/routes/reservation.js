@@ -2,7 +2,7 @@ import Airtable from 'airtable';
 import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // UPDATED: import directly from dashboardRouter
+import { setRefreshFlag } from './dashboard/dashboardRouter.js'; // FIXED: Correct relative path
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
