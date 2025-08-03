@@ -2,6 +2,18 @@ import Airtable from 'airtable';
 import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
+import { BroadcastChannel } from 'broadcast-channel'; // NEW
+
+// Helper: broadcast to dashboards
+const broadcastReservationUpdate = async (type, restaurantId) => {
+  try {
+    const bc = new BroadcastChannel('reservations');
+    await bc.postMessage({ type, restaurantId, timestamp: Date.now() });
+    await bc.close();
+  } catch (err) {
+    console.error('[Broadcast] Failed to send update:', err);
+  }
+};
 
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
@@ -176,6 +188,7 @@ export const changeReservation = async (req) => {
 
     await airtable(tableName).update(match[0].id, { date: normalizedDate, timeSlot: normalizedTime, restaurantId: config.restaurantId });
     await sendConfirmationEmail({ type: 'change', confirmationCode: normalizedCode, config });
+    await broadcastReservationUpdate('reservation.change', restaurantId); // NEW
 
     const successBody = { type: 'reservation.change', confirmationCode: normalizedCode, newDate: normalizedDate, newTimeSlot: normalizedTime, restaurantId: config.restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (success):', JSON.stringify(successBody, null, 2));
