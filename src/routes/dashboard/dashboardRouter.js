@@ -7,6 +7,15 @@ import { requireAuth } from '../../../middleware/requireAuth.js'; // ✅ Auth mi
 
 export const dashboardRouter = express.Router();
 
+// In-memory store for refresh flags
+const refreshFlags = {}; // { restaurantId: 0 or 1 }
+
+// Helper to set refresh flag (can be called by other modules)
+export const setRefreshFlag = (restaurantId) => {
+  refreshFlags[restaurantId] = 1;
+  console.log(`[DEBUG] Refresh flag set for ${restaurantId}`);
+};
+
 // ✅ Protect all dashboard routes
 dashboardRouter.use(requireAuth);
 
@@ -54,6 +63,7 @@ dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
 
   try {
     const result = await updateReservations(restaurantId, updates);
+    setRefreshFlag(restaurantId); // <-- Trigger refresh flag
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result });
   } catch (err) {
@@ -99,6 +109,7 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
     }
 
     const result = await base('restaurantMap').update(records[0].id, updates);
+    setRefreshFlag(restaurantId); // <-- Trigger refresh flag
     console.log('[DEBUG] Config update result ID:', result.id);
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result });
@@ -106,4 +117,15 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
     console.error('[ERROR] Failed to update config:', err);
     return res.status(500).json({ error: 'Failed to update config' });
   }
+});
+
+// ✅ GET /api/dashboard/:restaurantId/refreshFlag
+dashboardRouter.get('/:restaurantId/refreshFlag', async (req, res) => {
+  console.log('[DEBUG] dashboardRouter GET /refreshFlag called');
+  const restaurantId = enforceRestaurantAccess(req, res);
+  if (!restaurantId) return;
+
+  const flag = refreshFlags[restaurantId] || 0;
+  refreshFlags[restaurantId] = 0; // Reset after read
+  return res.status(200).json({ refresh: flag });
 });
