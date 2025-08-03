@@ -22,6 +22,12 @@ export const extractFields = async (vivInput, restaurantId) => {
     '- Set `type` to `reservation.incomplete` if ANY required field is missing.',
     '- Do the same for other intents (e.g., `reservation.change` vs `reservation.change.incomplete`).',
     '',
+    'Intent Rules:',
+    '- If the user provides a confirmation code and requests a new date or time, intent is "changeReservation".',
+    '- If the user provides a confirmation code and requests cancellation, intent is "cancelReservation".',
+    '- If the user asks about availability without booking, intent is "checkAvailability".',
+    '- Otherwise, default to "reservation".',
+    '',
     'Your job is to:',
     '- Determine user intent: "reservation", "changeReservation", "cancelReservation", or "checkAvailability".',
     '- Output valid JSON starting on the first line like:',
@@ -135,6 +141,20 @@ export const extractFields = async (vivInput, restaurantId) => {
         }
       } else {
         console.warn('[DEBUG][extractFields] Missing parsed object in AI response');
+      }
+
+      // Heuristic override for misclassified intents
+      const userText = (vivInput.messages?.map(m => m.content).join(' ') || '').toLowerCase();
+      const hasCode = isLikelyConfirmationCode(parsed.parsed?.confirmationCode || parsed.parsed?.name);
+      const hasDateOrTime = parsed.parsed?.date || parsed.parsed?.timeSlot || parsed.parsed?.newDate || parsed.parsed?.newTimeSlot;
+
+      if (hasCode) {
+        if (userText.includes('cancel')) {
+          parsed.intent = 'cancelReservation';
+        } else if (hasDateOrTime) {
+          parsed.intent = 'changeReservation';
+        }
+        console.log('[DEBUG][extractFields] Heuristic override applied. New intent:', parsed.intent);
       }
 
       // Backend override for type if necessary
