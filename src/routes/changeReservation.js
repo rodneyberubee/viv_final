@@ -2,7 +2,7 @@ import Airtable from 'airtable';
 import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // NEW: Import refresh flag helper
+import { setRefreshFlag } from './dashboard/dashboardRouter.js'; // FIXED: Corrected import path
 
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
