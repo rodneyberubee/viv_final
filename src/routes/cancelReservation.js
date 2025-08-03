@@ -1,7 +1,7 @@
 import Airtable from 'airtable';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // NEW
+import { setRefreshFlag } from './dashboard/dashboardRouter.js'; // FIXED: aligned path with router
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
