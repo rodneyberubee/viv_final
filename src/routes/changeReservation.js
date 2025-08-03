@@ -3,6 +3,13 @@ import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
+// Helper: Consistent business hours error formatter
+const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
+  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
+  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
+  return { openTime: formattedOpen, closeTime: formattedClose };
+};
+
 export const changeReservation = async (req) => {
   const { restaurantId } = req.params;
   if (!restaurantId) {
@@ -70,15 +77,13 @@ export const changeReservation = async (req) => {
   const closeTime = config[closeKey];
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-    const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
-    const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
+    const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
         type: 'reservation.error', 
         error: 'outside_business_hours', 
-        openTime: formattedOpen, 
-        closeTime: formattedClose 
+        ...details
       } 
     };
   }
@@ -92,15 +97,13 @@ export const changeReservation = async (req) => {
   }
 
   if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
-    const formattedOpen = openDateTime.toFormat('hh:mm a');
-    const formattedClose = closeDateTime.toFormat('hh:mm a');
+    const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
         type: 'reservation.error', 
         error: 'outside_business_hours', 
-        openTime: formattedOpen, 
-        closeTime: formattedClose 
+        ...details
       } 
     };
   }
