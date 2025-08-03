@@ -33,7 +33,11 @@ export const createReservation = async (parsed, config) => {
   const closeTime = config[closeKey];
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-    throw new Error('outside_business_hours');
+    const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
+    const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
+    const err = new Error('outside_business_hours');
+    err.details = { openTime: formattedOpen, closeTime: formattedClose };
+    throw err;
   }
 
   let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
@@ -45,7 +49,11 @@ export const createReservation = async (parsed, config) => {
   }
 
   if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-    throw new Error('outside_business_hours');
+    const formattedOpen = openDateTime.toFormat('hh:mm a');
+    const formattedClose = closeDateTime.toFormat('hh:mm a');
+    const err = new Error('outside_business_hours');
+    err.details = { openTime: formattedOpen, closeTime: formattedClose };
+    throw err;
   }
 
   if (!name?.trim() || !contactInfo?.trim()) {
@@ -147,7 +155,9 @@ export const reservation = async (req) => {
     const closeTime = config[closeKey];
 
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+      const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
+      const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', openTime: formattedOpen, closeTime: formattedClose } };
     }
 
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
@@ -158,7 +168,9 @@ export const reservation = async (req) => {
     }
 
     if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours' } };
+      const formattedOpen = openDateTime.toFormat('hh:mm a');
+      const formattedClose = closeDateTime.toFormat('hh:mm a');
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', openTime: formattedOpen, closeTime: formattedClose } };
     }
 
     const reservations = await base(tableName)
@@ -273,6 +285,7 @@ export const reservation = async (req) => {
     };
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
-    return { status: 500, body: { type: 'reservation.error', error: err.message || 'internal_server_error' } };
+    const extra = err.details ? { openTime: err.details.openTime, closeTime: err.details.closeTime } : {};
+    return { status: 500, body: { type: 'reservation.error', error: err.message || 'internal_server_error', ...extra } };
   }
 };
