@@ -2,19 +2,7 @@ import Airtable from 'airtable';
 import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { BroadcastChannel } from 'broadcast-channel'; // NEW
-
-// Helper: broadcast to dashboards
-const broadcastReservationUpdate = async (event, restaurantId) => {
-  try {
-    const bc = new BroadcastChannel('reservations');
-    // Unified payload format for easy dashboard handling
-    await bc.postMessage({ event, restaurantId, timestamp: Date.now(), refresh: 1 });
-    await bc.close();
-  } catch (err) {
-    console.error('[Broadcast] Failed to send update:', err);
-  }
-};
+import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // NEW: Import refresh flag helper
 
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
@@ -192,8 +180,8 @@ export const changeReservation = async (req) => {
     await airtable(tableName).update(match[0].id, { date: normalizedDate, timeSlot: normalizedTime, restaurantId: config.restaurantId });
     await sendConfirmationEmail({ type: 'change', confirmationCode: normalizedCode, config });
 
-    // Broadcast the update for dashboards
-    await broadcastReservationUpdate('reservation.change', restaurantId);
+    // Set refresh flag for dashboard
+    setRefreshFlag(restaurantId);
 
     const successBody = { type: 'reservation.change', confirmationCode: normalizedCode, newDate: normalizedDate, newTimeSlot: normalizedTime, restaurantId: config.restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (success):', JSON.stringify(successBody, null, 2));
