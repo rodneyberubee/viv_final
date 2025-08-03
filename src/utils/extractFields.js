@@ -54,7 +54,6 @@ export const extractFields = async (vivInput, restaurantId) => {
         console.log(`[DEBUG][extractFields] Successfully formatted ${fieldName}:`, formatted);
         return formatted;
       }
-      console.warn(`[DEBUG][extractFields] Value for ${fieldName} not a Luxon object, keeping raw:`, val);
       return val || null;
     } catch (err) {
       console.error(`[DEBUG][extractFields] Failed to format ${fieldName}:`, err, 'Raw value:', val);
@@ -63,7 +62,7 @@ export const extractFields = async (vivInput, restaurantId) => {
   };
 
   const isLikelyConfirmationCode = (val) => {
-    return typeof val === 'string' && /^[a-zA-Z0-9]{6,12}$/.test(val);
+    return typeof val === 'string' && /^[a-zA-Z0-9]{6,12}$/.test(val) && !val.includes('@');
   };
 
   try {
@@ -90,24 +89,13 @@ export const extractFields = async (vivInput, restaurantId) => {
     }
 
     let aiResponse = json.choices?.[0]?.message?.content?.trim() ?? '';
-    console.log('[DEBUG][extractFields] AI Raw content:', aiResponse);
-
-    // Extract only the JSON portion if extra text appears
     const jsonStart = aiResponse.indexOf('{');
     const jsonEnd = aiResponse.lastIndexOf('}') + 1;
-    if (jsonStart !== -1 && jsonEnd > jsonStart) {
-      aiResponse = aiResponse.slice(jsonStart, jsonEnd);
-      console.log('[DEBUG][extractFields] Trimmed AI content to JSON block:', aiResponse);
-    } else {
-      console.warn('[DEBUG][extractFields] Could not find proper JSON boundaries. Raw response used.');
-    }
+    if (jsonStart !== -1 && jsonEnd > jsonStart) aiResponse = aiResponse.slice(jsonStart, jsonEnd);
 
     let parsed;
     try {
       parsed = JSON.parse(aiResponse);
-      console.log('[DEBUG][extractFields] Parsed JSON before normalization:', parsed);
-
-      // Ensure parsed object exists
       if (!parsed.parsed) parsed.parsed = {};
 
       // Normalize date/time fields safely
@@ -118,53 +106,48 @@ export const extractFields = async (vivInput, restaurantId) => {
           parsed.parsed[field] = safeFormat(parsedVal, fmt, field);
         }
       };
-
       normalizeField('date', 'yyyy-MM-dd', parseFlexibleDate, 'rawDate');
       normalizeField('newDate', 'yyyy-MM-dd', parseFlexibleDate, 'rawNewDate');
       normalizeField('timeSlot', 'HH:mm', parseFlexibleTime, 'rawTimeSlot');
       normalizeField('newTimeSlot', 'HH:mm', parseFlexibleTime, 'rawNewTimeSlot');
 
       // Move name → confirmationCode if applicable
-      if (parsed.intent === 'changeReservation') {
-        if (!parsed.parsed.confirmationCode && isLikelyConfirmationCode(parsed.parsed.name)) {
-          parsed.parsed.confirmationCode = parsed.parsed.name;
-          parsed.parsed.name = null;
-          console.log('[DEBUG][extractFields] Moved name to confirmationCode for changeReservation');
-        }
+      if (parsed.intent === 'changeReservation' && !parsed.parsed.confirmationCode && isLikelyConfirmationCode(parsed.parsed.name)) {
+        parsed.parsed.confirmationCode = parsed.parsed.name;
+        parsed.parsed.name = null;
       }
 
-      // Heuristic override (only if AI didn't classify intent correctly)
+      // Heuristic override: recheck based on userText
       const userText = (vivInput.messages?.map(m => m.content).join(' ') || '').toLowerCase();
       const hasCode = isLikelyConfirmationCode(parsed.parsed?.confirmationCode || parsed.parsed?.name);
       const hasDateOrTime = parsed.parsed?.date || parsed.parsed?.timeSlot || parsed.parsed?.newDate || parsed.parsed?.newTimeSlot;
 
       if (hasCode) {
-        if (userText.includes('cancel') && parsed.intent !== 'cancelReservation') {
-          parsed.intent = 'cancelReservation';
-        } else if (hasDateOrTime && parsed.intent !== 'changeReservation') {
-          parsed.intent = 'changeReservation';
-        }
-        console.log('[DEBUG][extractFields] Heuristic override applied. New intent:', parsed.intent);
+        if (/\bcancel\b/i.test(userText.split(/[.?!]/)[0])) parsed.intent = 'cancelReservation';
+        else if (hasDateOrTime) parsed.intent = 'changeReservation';
       }
 
-      // Normalize type based on filled fields
-      let normalizedType = parsed.type;
+      // Guardrails: don’t allow change/cancel without code
+      if ((parsed.intent === 'changeReservation' || parsed.intent === 'cancelReservation') && !parsed.parsed.confirmationCode) {
+        parsed.intent = 'reservation';
+      }
+
+      // Always recompute type
       if (parsed.intent === 'reservation') {
-        const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
-        const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
-        normalizedType = incomplete ? 'reservation.incomplete' : 'reservation.complete';
+        const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed;
+        parsed.type = [name, partySize, contactInfo, date, timeSlot].some(v => !v)
+          ? 'reservation.incomplete'
+          : 'reservation.complete';
+      } else if (parsed.intent === 'changeReservation') {
+        const { confirmationCode, newDate, newTimeSlot } = parsed.parsed;
+        parsed.type = [confirmationCode, newDate, newTimeSlot].some(v => !v)
+          ? 'reservation.change.incomplete'
+          : 'reservation.change';
+      } else if (parsed.intent === 'cancelReservation') {
+        parsed.type = 'reservation.cancel';
+      } else if (parsed.intent === 'checkAvailability') {
+        parsed.type = 'availability.check';
       }
-      if (parsed.intent === 'changeReservation') {
-        const { confirmationCode, newDate, newTimeSlot } = parsed.parsed || {};
-        const incomplete = [confirmationCode, newDate, newTimeSlot].some(v => !v);
-        normalizedType = incomplete ? 'reservation.change.incomplete' : 'reservation.change';
-      }
-      if (parsed.intent === 'cancelReservation') normalizedType = 'reservation.cancel';
-      if (parsed.intent === 'checkAvailability') normalizedType = 'availability.check';
-
-      parsed.type = normalizedType;
-
-      console.log('[DEBUG][extractFields] Parsed JSON after normalization:', parsed);
 
     } catch (e) {
       console.error('[extractFields] 💥 JSON parse error:', e, 'AI response:', aiResponse);
