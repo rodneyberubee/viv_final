@@ -43,6 +43,7 @@ export const askVivRouter = async (req, res) => {
     const aiParsed = await extractFields({ messages }, restaurantId);
 
     if (!aiParsed) {
+      console.warn('[askVivRouter] ⚠️ extractFields returned null');
       return res.status(200).json({ type: 'chat', parsed: {}, error: false });
     }
 
@@ -61,6 +62,8 @@ export const askVivRouter = async (req, res) => {
   }
 
   parsed.restaurantId = restaurantId;
+  console.log('[askVivRouter] 📨 Parsed payload before routing:', JSON.stringify(parsed, null, 2));
+
   const newReq = {
     ...req,
     body: { ...parsed }
@@ -80,12 +83,13 @@ export const askVivRouter = async (req, res) => {
       if (openTime) response.openTime = openTime;
       if (closeTime) response.closeTime = closeTime;
 
-      console.log('[askVivRouter] Returning incomplete response with hours:', response);
+      console.log('[askVivRouter] Returning incomplete response with hours:', JSON.stringify(response, null, 2));
       return res.status(200).json(response);
     }
 
     switch (parsed.type) {
       case 'chat':
+        console.log('[askVivRouter] Handling chat');
         return res.status(200).json({
           type: 'chat',
           user: messages[messages.length - 1]?.content || '',
@@ -93,19 +97,27 @@ export const askVivRouter = async (req, res) => {
         });
 
       case 'reservation.complete':
+        console.log('[askVivRouter] Routing to reservation');
         const result = await reservation(newReq);
+        console.log('[askVivRouter] Reservation result:', JSON.stringify(result.body, null, 2));
         return res.status(result.status || 200).json(result.body);
 
       case 'reservation.change':
+        console.log('[askVivRouter] Routing to changeReservation');
         const changeResult = await changeReservation(newReq);
+        console.log('[askVivRouter] Change result:', JSON.stringify(changeResult.body, null, 2));
         return res.status(changeResult.status || 200).json(changeResult.body);
 
       case 'reservation.cancel':
+        console.log('[askVivRouter] Routing to cancelReservation');
         const cancelResult = await cancelReservation(newReq);
+        console.log('[askVivRouter] Cancel result:', JSON.stringify(cancelResult.body, null, 2));
         return res.status(cancelResult.status || 200).json(cancelResult.body);
 
       case 'availability.check':
+        console.log('[askVivRouter] Routing to checkAvailability');
         const availabilityResult = await checkAvailability(newReq);
+        console.log('[askVivRouter] Availability result:', JSON.stringify(availabilityResult.body, null, 2));
         return res.status(availabilityResult.status || 200).json(availabilityResult.body);
 
       default:
