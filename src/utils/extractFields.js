@@ -107,58 +107,48 @@ export const extractFields = async (vivInput, restaurantId) => {
       parsed = JSON.parse(aiResponse);
       console.log('[DEBUG][extractFields] Parsed JSON before normalization:', parsed);
 
-      let normalizedType = parsed.type;
+      // Ensure parsed object exists
+      if (!parsed.parsed) parsed.parsed = {};
 
-      // Normalize and preserve raw values for fallback
-      if (parsed.parsed) {
-        if (parsed.parsed.date) {
-          parsed.parsed.rawDate = parsed.parsed.date;
-          const parsedDate = parseFlexibleDate(parsed.parsed.date, 2025);
-          parsed.parsed.date = safeFormat(parsedDate, 'yyyy-MM-dd', 'date');
+      // Normalize date/time fields safely
+      const normalizeField = (field, fmt, parser, rawKey) => {
+        if (parsed.parsed[field]) {
+          parsed.parsed[rawKey] = parsed.parsed[field];
+          const parsedVal = parser(parsed.parsed[field], 2025);
+          parsed.parsed[field] = safeFormat(parsedVal, fmt, field);
         }
-        if (parsed.parsed.newDate) {
-          parsed.parsed.rawNewDate = parsed.parsed.newDate;
-          const parsedNewDate = parseFlexibleDate(parsed.parsed.newDate, 2025);
-          parsed.parsed.newDate = safeFormat(parsedNewDate, 'yyyy-MM-dd', 'newDate');
-        }
-        if (parsed.parsed.timeSlot) {
-          parsed.parsed.rawTimeSlot = parsed.parsed.timeSlot;
-          const parsedTime = parseFlexibleTime(parsed.parsed.timeSlot);
-          parsed.parsed.timeSlot = safeFormat(parsedTime, 'HH:mm', 'timeSlot');
-        }
-        if (parsed.parsed.newTimeSlot) {
-          parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
-          const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
-          parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm', 'newTimeSlot');
-        }
+      };
 
-        // Fix: If confirmationCode missing but name looks like one, move it
-        if (parsed.intent === 'changeReservation') {
-          if (!parsed.parsed.confirmationCode && isLikelyConfirmationCode(parsed.parsed.name)) {
-            parsed.parsed.confirmationCode = parsed.parsed.name;
-            parsed.parsed.name = null;
-            console.log('[DEBUG][extractFields] Moved name to confirmationCode for changeReservation');
-          }
+      normalizeField('date', 'yyyy-MM-dd', parseFlexibleDate, 'rawDate');
+      normalizeField('newDate', 'yyyy-MM-dd', parseFlexibleDate, 'rawNewDate');
+      normalizeField('timeSlot', 'HH:mm', parseFlexibleTime, 'rawTimeSlot');
+      normalizeField('newTimeSlot', 'HH:mm', parseFlexibleTime, 'rawNewTimeSlot');
+
+      // Move name → confirmationCode if applicable
+      if (parsed.intent === 'changeReservation') {
+        if (!parsed.parsed.confirmationCode && isLikelyConfirmationCode(parsed.parsed.name)) {
+          parsed.parsed.confirmationCode = parsed.parsed.name;
+          parsed.parsed.name = null;
+          console.log('[DEBUG][extractFields] Moved name to confirmationCode for changeReservation');
         }
-      } else {
-        console.warn('[DEBUG][extractFields] Missing parsed object in AI response');
       }
 
-      // Heuristic override for misclassified intents
+      // Heuristic override (only if AI didn't classify intent correctly)
       const userText = (vivInput.messages?.map(m => m.content).join(' ') || '').toLowerCase();
       const hasCode = isLikelyConfirmationCode(parsed.parsed?.confirmationCode || parsed.parsed?.name);
       const hasDateOrTime = parsed.parsed?.date || parsed.parsed?.timeSlot || parsed.parsed?.newDate || parsed.parsed?.newTimeSlot;
 
       if (hasCode) {
-        if (userText.includes('cancel')) {
+        if (userText.includes('cancel') && parsed.intent !== 'cancelReservation') {
           parsed.intent = 'cancelReservation';
-        } else if (hasDateOrTime) {
+        } else if (hasDateOrTime && parsed.intent !== 'changeReservation') {
           parsed.intent = 'changeReservation';
         }
         console.log('[DEBUG][extractFields] Heuristic override applied. New intent:', parsed.intent);
       }
 
-      // Backend override for type if necessary
+      // Normalize type based on filled fields
+      let normalizedType = parsed.type;
       if (parsed.intent === 'reservation') {
         const { name, partySize, contactInfo, date, timeSlot } = parsed.parsed || {};
         const incomplete = [name, partySize, contactInfo, date, timeSlot].some(v => !v);
