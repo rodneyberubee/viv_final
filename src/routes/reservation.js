@@ -235,7 +235,7 @@ export const reservation = async (req) => {
     return {
       status: 201,
       body: {
-        type: 'reservation.create',
+        type: 'reservation.complete', // Changed from reservation.create
         confirmationCode,
         name: parsed.name,
         partySize: parsed.partySize,
