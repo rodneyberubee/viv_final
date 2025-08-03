@@ -11,7 +11,7 @@ const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
-  const { date, timeSlot, rawDate, rawTimeSlot } = req.body; // Added support for raw fallbacks
+  const { date, timeSlot, rawDate, rawTimeSlot } = req.body;
 
   // Use normalized or fallback raw values
   const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
@@ -46,22 +46,22 @@ export const checkAvailability = async (req) => {
       return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window' } };
     }
 
-    // Business hours check (strong enforcement)
+    // Business hours check
     const weekday = currentTime.toFormat('cccc').toLowerCase();
     const openKey = `${weekday}Open`;
     const closeKey = `${weekday}Close`;
     const openTime = config[openKey];
     const closeTime = config[closeKey];
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
     // If closed or missing hours
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
       return { 
         status: 400, 
         body: { 
           type: 'availability.check.error', 
           error: 'outside_business_hours', 
-          ...details
+          ...hoursDetails
         } 
       };
     }
@@ -69,19 +69,18 @@ export const checkAvailability = async (req) => {
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
     let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
 
-    // Handle overnight hours (close after midnight)
+    // Handle overnight hours
     if (closeDateTime <= openDateTime) {
       closeDateTime = closeDateTime.plus({ days: 1 });
     }
 
     if (currentTime < openDateTime || currentTime > closeDateTime) {
-      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
       return { 
         status: 400, 
         body: { 
           type: 'availability.check.error', 
           error: 'outside_business_hours',
-          ...details
+          ...hoursDetails
         } 
       };
     }
@@ -144,7 +143,8 @@ export const checkAvailability = async (req) => {
           timeSlot: normalizedTime,
           restaurantId: config.restaurantId,
           alternatives,
-          remaining: 0
+          remaining: 0,
+          ...hoursDetails
         }
       };
     }
@@ -177,7 +177,8 @@ export const checkAvailability = async (req) => {
           timeSlot: normalizedTime,
           restaurantId: config.restaurantId,
           alternatives,
-          remaining: 0
+          remaining: 0,
+          ...hoursDetails
         }
       };
     }
@@ -190,7 +191,8 @@ export const checkAvailability = async (req) => {
         date: normalizedDate,
         timeSlot: normalizedTime,
         restaurantId: config.restaurantId,
-        remaining
+        remaining,
+        ...hoursDetails
       }
     };
   } catch (err) {
