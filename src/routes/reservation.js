@@ -156,10 +156,10 @@ export const reservation = async (req) => {
     const closeKey = `${weekday}Close`;
     const openTime = config[openKey];
     const closeTime = config[closeKey];
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...details } };
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails } };
     }
 
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
@@ -170,8 +170,7 @@ export const reservation = async (req) => {
     }
 
     if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...details } };
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails } };
     }
 
     const reservations = await base(tableName)
@@ -234,7 +233,8 @@ export const reservation = async (req) => {
           remaining: 0,
           date: normalizedDate,
           timeSlot: normalizedTime,
-          alternatives
+          alternatives,
+          ...hoursDetails
         }
       };
     }
@@ -265,7 +265,8 @@ export const reservation = async (req) => {
           remaining: 0,
           date: normalizedDate,
           timeSlot: normalizedTime,
-          alternatives
+          alternatives,
+          ...hoursDetails
         }
       };
     }
@@ -281,7 +282,8 @@ export const reservation = async (req) => {
         name: parsed.name,
         partySize: parsed.partySize,
         timeSlot: parsed.timeSlot,
-        date: parsed.date
+        date: parsed.date,
+        ...hoursDetails
       }
     };
   } catch (err) {
