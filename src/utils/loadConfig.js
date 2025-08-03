@@ -33,14 +33,29 @@ export async function loadRestaurantConfig(restaurantId) {
     const record = records[0];
     console.log('[DEBUG] Raw record fields:', record.fields);
 
+    // Extract all daily open/close hour fields dynamically
+    const hours = {};
+    [
+      'mondayOpen','mondayClose',
+      'tuesdayOpen','tuesdayClose',
+      'wednesdayOpen','wednesdayClose',
+      'thursdayOpen','thursdayClose',
+      'fridayOpen','fridayClose',
+      'saturdayOpen','saturdayClose',
+      'sundayOpen','sundayClose'
+    ].forEach((key) => {
+      if (record.fields[key] !== undefined) hours[key] = record.fields[key];
+    });
+
     const config = {
       restaurantId: record.fields.restaurantId,
       baseId: record.fields.baseId,
       tableName: record.fields.tableName,
       maxReservations: record.fields.maxReservations || 10,
       futureCutoff: record.fields.futureCutoff || 30,
-      timeZone: record.fields.timeZone || 'UTC',             // <-- Added for time zone support
-      calibratedTime: record.fields.calibratedTime || null   // <-- Added for future debugging/time sync
+      timeZone: record.fields.timeZone || 'UTC',
+      calibratedTime: record.fields.calibratedTime || null,
+      ...hours // <-- Merge daily open/close hours into config
     };
 
     console.log('[DEBUG] Final config object:', config);
