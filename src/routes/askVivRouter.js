@@ -68,13 +68,20 @@ export const askVivRouter = async (req, res) => {
 
   try {
     if (parsed.type.endsWith('.incomplete')) {
-      const { intent, restaurantId, ...safeParsed } = parsed;
+      const { intent, restaurantId, openTime, closeTime, ...safeParsed } = parsed;
 
-      return res.status(200).json({
+      const response = {
         type: parsed.type,
         parsed: renameKeysForViv(safeParsed),
         user: messages[messages.length - 1]?.content || ''
-      });
+      };
+
+      // Include open/close times if available
+      if (openTime) response.openTime = openTime;
+      if (closeTime) response.closeTime = closeTime;
+
+      console.log('[askVivRouter] Returning incomplete response with hours:', response);
+      return res.status(200).json(response);
     }
 
     switch (parsed.type) {
