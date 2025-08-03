@@ -16,10 +16,12 @@ const broadcastReservationUpdate = async (type, restaurantId) => {
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
-  const confirmationCode =
+  let confirmationCode =
     typeof req.body.confirmationCode === 'string'
       ? req.body.confirmationCode.trim()
       : req.body.confirmationCode || null;
+
+  if (confirmationCode) confirmationCode = confirmationCode.toLowerCase();
 
   if (!confirmationCode) {
     console.error('[ERROR] Missing confirmation code in body.');
@@ -43,7 +45,7 @@ export const cancelReservation = async (req) => {
 
   try {
     // Strict lookup: confirmationCode + restaurantId
-    const formula = `AND({rawConfirmationCode} = '${confirmationCode}', {restaurantId} = '${restaurantId}')`;
+    const formula = `AND(LOWER({rawConfirmationCode}) = '${confirmationCode}', {restaurantId} = '${restaurantId}')`;
     const records = await airtable(tableName)
       .select({ filterByFormula: formula, fields: ['name', 'date', 'timeSlot', 'status'] })
       .all();
@@ -79,8 +81,11 @@ export const cancelReservation = async (req) => {
     // Soft cancel: mark as canceled instead of deleting
     await airtable(tableName).update(reservation.id, { status: 'canceled' });
 
-    await sendConfirmationEmail({ type: 'cancel', confirmationCode, config });
-    await broadcastReservationUpdate('reservation.cancel', restaurantId); // NEW
+    await sendConfirmationEmail({ type: 'cancel', confirmationCode, config }).catch(err =>
+      console.error('[WARN] Failed to send cancellation email:', err)
+    );
+
+    await broadcastReservationUpdate('reservation.cancel', restaurantId); // notify dashboards
 
     return {
       status: 200,
