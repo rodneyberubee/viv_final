@@ -2,7 +2,7 @@ import Airtable from 'airtable';
 import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { setRefreshFlag } from '../utils/refreshFlags.js'; // NEW
+import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // UPDATED: import directly from dashboardRouter
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
@@ -237,7 +237,7 @@ export const reservation = async (req) => {
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
     // Set refresh flag for dashboard
-    setRefreshFlag(restaurantId); // NEW
+    setRefreshFlag(restaurantId);
 
     // Return with type + restaurantId for VivAChat broadcasting
     return {
