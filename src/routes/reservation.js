@@ -126,4 +126,161 @@ export const reservation = async (req) => {
     const weekday = normalizedDate ? parseDateTime(normalizedDate, normalizedTime || '00:00', timeZone).toFormat('cccc').toLowerCase() : 'monday';
     const openKey = `${weekday}Open`;
     const closeKey = `${weekday}Close`;
-    const hoursDetails = buildOutsideHoursError(normalizedDate, c
+    const hoursDetails = buildOutsideHoursError(normalizedDate, config[openKey], config[closeKey], timeZone);
+
+    // Missing fields? Include hours in response
+    const missing = [];
+    if (!name) missing.push('name');
+    if (!partySize) missing.push('partySize');
+    if (!contactInfo) missing.push('contactInfo');
+    if (!date && !rawDate) missing.push('date');
+    if (!timeSlot && !rawTimeSlot) missing.push('timeSlot');
+    if (missing.length > 0) {
+      return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing, ...hoursDetails } };
+    }
+
+    if (!normalizedDate || !normalizedTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
+    }
+
+    const now = getCurrentDateTime(timeZone).startOf('day');
+    const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
+    const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
+
+    if (!reservationTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
+    }
+    if (isPast(normalizedDate, normalizedTime, timeZone)) {
+      return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past', ...hoursDetails } };
+    }
+    if (reservationTime > cutoffDate) {
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window', ...hoursDetails } };
+    }
+
+    let openDateTime = parseDateTime(normalizedDate, config[openKey], timeZone);
+    let closeDateTime = parseDateTime(normalizedDate, config[closeKey], timeZone);
+    if (closeDateTime <= openDateTime) closeDateTime = closeDateTime.plus({ days: 1 });
+
+    if (reservationTime < openDateTime || reservationTime > closeDateTime) {
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails } };
+    }
+
+    const reservations = await base(tableName)
+      .select({
+        filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
+        fields: ['status', 'timeSlot', 'date']
+      })
+      .all();
+
+    const isWithinBusinessHours = (time) => {
+      let slotDT = parseDateTime(normalizedDate, time, timeZone);
+      if (closeDateTime <= openDateTime) {
+        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
+      }
+      return slotDT >= openDateTime && slotDT <= closeDateTime;
+    };
+
+    const isSlotAvailable = (time, list) => {
+      if (!isWithinBusinessHours(time)) return false;
+      const matching = list.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
+      const confirmed = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
+      return confirmed.length < maxReservations;
+    };
+
+    const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
+      let before = null;
+      let after = null;
+      let forward = centerTime;
+      let backward = centerTime;
+
+      for (let i = 1; i <= maxSteps; i++) {
+        forward = forward.plus({ minutes: 15 });
+        const forwardTime = forward.toFormat('HH:mm');
+        if (isSlotAvailable(forwardTime, allReservations)) {
+          after = forwardTime;
+          break;
+        }
+      }
+      for (let i = 1; i <= maxSteps; i++) {
+        backward = backward.minus({ minutes: 15 });
+        const backwardTime = backward.toFormat('HH:mm');
+        if (isSlotAvailable(backwardTime, allReservations)) {
+          before = backwardTime;
+          break;
+        }
+      }
+      return { before, after };
+    };
+
+    const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
+    if (isBlocked) {
+      const alternatives = findNextAvailableSlots(reservationTime, reservations, maxReservations);
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'blocked',
+          remaining: 0,
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          alternatives,
+          ...hoursDetails
+        }
+      };
+    }
+
+    const confirmedReservations = reservations.filter(r => {
+      const slot = r.fields.timeSlot?.trim();
+      const status = r.fields.status?.trim().toLowerCase();
+      const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
+      return (
+        status === 'confirmed' &&
+        slotDateTime &&
+        !isPast(normalizedDate, slot, timeZone) &&
+        slotDateTime <= cutoffDate
+      );
+    });
+
+    const sameSlot = confirmedReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
+    const confirmedCount = sameSlot.length;
+
+    if (confirmedCount >= maxReservations) {
+      const alternatives = findNextAvailableSlots(reservationTime, reservations);
+      return {
+        status: 409,
+        body: {
+          type: 'reservation.unavailable',
+          available: false,
+          reason: 'full',
+          remaining: 0,
+          date: normalizedDate,
+          timeSlot: normalizedTime,
+          alternatives,
+          ...hoursDetails
+        }
+      };
+    }
+
+    const { confirmationCode } = await createReservation(parsed, { ...config, restaurantId });
+    await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
+
+    return {
+      status: 201,
+      body: {
+        type: 'reservation.complete',
+        confirmationCode,
+        name: parsed.name,
+        partySize: parsed.partySize,
+        timeSlot: parsed.timeSlot,
+        date: parsed.date,
+        ...hoursDetails
+      }
+    };
+  } catch (err) {
+    console.error('[ROUTE][reservation] Error caught:', err);
+    const extra = err.details ? { openTime: err.details.openTime, closeTime: err.details.closeTime } : {};
+    return { status: 500, body: { type: 'reservation.error', error: err.message || 'internal_server_error', ...extra } };
+  }
+};
