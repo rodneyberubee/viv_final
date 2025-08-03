@@ -29,13 +29,13 @@ export const checkAvailability = async (req) => {
 
   if (!normalizedDate || !normalizedTime) {
     const parsed = { date: normalizedDate || null, timeSlot: normalizedTime || null, restaurantId };
-    return { status: 200, body: { type: 'availability.check.incomplete', parsed } };
+    return { status: 200, body: { type: 'availability.incomplete', restaurantId, parsed } };
   }
 
   const config = await loadRestaurantConfig(restaurantId);
   if (!config) {
     console.error('[ERROR] Restaurant config not found for:', restaurantId);
-    return { status: 404, body: { type: 'availability.check.error', error: 'config_not_found' } };
+    return { status: 404, body: { type: 'availability.error', error: 'config_not_found', restaurantId } };
   }
 
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
@@ -55,24 +55,20 @@ export const checkAvailability = async (req) => {
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
     if (!currentTime) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time', ...hoursDetails } };
+      return { status: 400, body: { type: 'availability.error', error: 'invalid_date_or_time', restaurantId, ...hoursDetails } };
     }
     if (isPast(normalizedDate, normalizedTime, timeZone)) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'cannot_check_past', ...hoursDetails } };
+      return { status: 400, body: { type: 'availability.error', error: 'cannot_check_past', restaurantId, ...hoursDetails } };
     }
     if (currentTime > cutoffDate) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window', ...hoursDetails } };
+      return { status: 400, body: { type: 'availability.error', error: 'outside_reservation_window', restaurantId, ...hoursDetails } };
     }
 
     // Business hours validation
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
       return { 
         status: 400, 
-        body: { 
-          type: 'availability.check.error', 
-          error: 'outside_business_hours', 
-          ...hoursDetails
-        } 
+        body: { type: 'availability.error', error: 'outside_business_hours', restaurantId, ...hoursDetails } 
       };
     }
 
@@ -83,11 +79,7 @@ export const checkAvailability = async (req) => {
     if (currentTime < openDateTime || currentTime > closeDateTime) {
       return { 
         status: 400, 
-        body: { 
-          type: 'availability.check.error', 
-          error: 'outside_business_hours',
-          ...hoursDetails
-        } 
+        body: { type: 'availability.error', error: 'outside_business_hours', restaurantId, ...hoursDetails } 
       };
     }
 
@@ -196,6 +188,6 @@ export const checkAvailability = async (req) => {
     };
   } catch (err) {
     console.error('[ERROR] Airtable checkAvailability failure', err);
-    return { status: 500, body: { type: 'availability.check.error', error: 'airtable_query_failed', ...hoursDetails } };
+    return { status: 500, body: { type: 'availability.error', error: 'airtable_query_failed', restaurantId, ...hoursDetails } };
   }
 };
