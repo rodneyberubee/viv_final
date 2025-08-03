@@ -4,16 +4,26 @@ import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.
 
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
-  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
-  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
-  return { openTime: formattedOpen, closeTime: formattedClose };
+  try {
+    const formattedOpen =
+      openTime && openTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a')
+        : null;
+    const formattedClose =
+      closeTime && closeTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a')
+        : null;
+    return { openTime: formattedOpen, closeTime: formattedClose };
+  } catch {
+    return { openTime: null, closeTime: null };
+  }
 };
 
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
   const { date, timeSlot, rawDate, rawTimeSlot } = req.body;
 
-  // Use normalized or fallback raw values
+  // Normalize inputs
   const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
   const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
 
@@ -31,7 +41,7 @@ export const checkAvailability = async (req) => {
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
-  // Precompute hours details for all responses
+  // Precompute hours details for responses
   const weekday = parseDateTime(normalizedDate, normalizedTime, timeZone)?.toFormat('cccc').toLowerCase() || 'monday';
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
@@ -54,7 +64,7 @@ export const checkAvailability = async (req) => {
       return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window', ...hoursDetails } };
     }
 
-    // Business hours check
+    // Business hours validation
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
       return { 
         status: 400, 
@@ -68,11 +78,7 @@ export const checkAvailability = async (req) => {
 
     let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
     let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-
-    // Handle overnight hours
-    if (closeDateTime <= openDateTime) {
-      closeDateTime = closeDateTime.plus({ days: 1 });
-    }
+    if (closeDateTime <= openDateTime) closeDateTime = closeDateTime.plus({ days: 1 });
 
     if (currentTime < openDateTime || currentTime > closeDateTime) {
       return { 
@@ -85,15 +91,14 @@ export const checkAvailability = async (req) => {
       };
     }
 
-    // Query only for this restaurant + date
+    // Query reservations
     const formula = `AND({restaurantId} = '${config.restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
 
-    // Check if time is within business hours
     const isWithinBusinessHours = (time) => {
       let slotDT = parseDateTime(normalizedDate, time, timeZone);
-      if (closeDateTime <= openDateTime) {
-        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
+      if (closeDateTime <= openDateTime && slotDT < openDateTime) {
+        slotDT = slotDT.plus({ days: 1 });
       }
       return slotDT >= openDateTime && slotDT <= closeDateTime;
     };
@@ -112,23 +117,17 @@ export const checkAvailability = async (req) => {
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
         const f = forward.toFormat('HH:mm');
-        if (isSlotAvailable(f)) {
-          results.after = f;
-          break;
-        }
+        if (isSlotAvailable(f)) { results.after = f; break; }
       }
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
         const b = backward.toFormat('HH:mm');
-        if (isSlotAvailable(b)) {
-          results.before = b;
-          break;
-        }
+        if (isSlotAvailable(b)) { results.before = b; break; }
       }
       return results;
     };
 
-    // Check if this exact slot is blocked
+    // Blocked slot check
     const sameSlotAll = allReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
