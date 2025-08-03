@@ -5,9 +5,19 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
-  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
-  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
-  return { openTime: formattedOpen, closeTime: formattedClose };
+  try {
+    const formattedOpen =
+      openTime && openTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a')
+        : null;
+    const formattedClose =
+      closeTime && closeTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a')
+        : null;
+    return { openTime: formattedOpen, closeTime: formattedClose };
+  } catch {
+    return { openTime: null, closeTime: null };
+  }
 };
 
 export const changeReservation = async (req) => {
@@ -61,23 +71,26 @@ export const changeReservation = async (req) => {
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
-  const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   if (!targetDateTime) {
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
   }
   if (isPast(normalizedDate, normalizedTime, timeZone)) {
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { status: 400, body: { type: 'reservation.error', error: 'cannot_change_to_past', ...hoursDetails } };
   }
 
   const now = getCurrentDateTime(timeZone).startOf('day');
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
   if (targetDateTime > cutoffDate) {
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window', ...hoursDetails } };
   }
 
   // Business hours validation (strong enforcement)
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
@@ -97,6 +110,7 @@ export const changeReservation = async (req) => {
   }
 
   if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
+    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
@@ -106,6 +120,8 @@ export const changeReservation = async (req) => {
       } 
     };
   }
+
+  const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   try {
     // Lookup reservation by code
