@@ -5,10 +5,11 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 import { BroadcastChannel } from 'broadcast-channel'; // NEW
 
 // Helper: broadcast to dashboards
-const broadcastReservationUpdate = async (type, restaurantId) => {
+const broadcastReservationUpdate = async (event, restaurantId) => {
   try {
     const bc = new BroadcastChannel('reservations');
-    await bc.postMessage({ type, restaurantId, timestamp: Date.now() });
+    // Unified payload format for easy dashboard handling
+    await bc.postMessage({ event, restaurantId, timestamp: Date.now(), refresh: 1 });
     await bc.close();
   } catch (err) {
     console.error('[Broadcast] Failed to send update:', err);
@@ -42,7 +43,7 @@ export const changeReservation = async (req) => {
 
   if (!restaurantId) {
     console.error('[ERROR] restaurantId is missing from req.params');
-    return { status: 400, body: { type: 'reservation.error', error: 'missing_restaurant_id' } };
+    return { status: 400, body: { type: 'reservation.error', error: 'missing_restaurant_id', restaurantId } };
   }
 
   const { confirmationCode, newDate, newTimeSlot, rawDate, rawTimeSlot, name } = req.body;
@@ -60,6 +61,7 @@ export const changeReservation = async (req) => {
     const missingBody = {
       type: 'reservation.error',
       error: 'missing_required_fields',
+      restaurantId,
       missing: [
         !normalizedCode && 'confirmationCode',
         !normalizedDate && 'newDate',
@@ -74,7 +76,7 @@ export const changeReservation = async (req) => {
   console.log('[DEBUG][changeReservation] Loaded config:', JSON.stringify(config, null, 2));
 
   if (!config) {
-    const body = { type: 'reservation.error', error: 'config_not_found' };
+    const body = { type: 'reservation.error', error: 'config_not_found', restaurantId };
     console.log('[DEBUG][changeReservation] Returning (config not found):', JSON.stringify(body, null, 2));
     return { status: 404, body };
   }
@@ -95,12 +97,12 @@ export const changeReservation = async (req) => {
   const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   if (!targetDateTime) {
-    const body = { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'invalid_date_or_time', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (invalid date):', JSON.stringify(body, null, 2));
     return { status: 400, body };
   }
   if (isPast(normalizedDate, normalizedTime, timeZone)) {
-    const body = { type: 'reservation.error', error: 'cannot_change_to_past', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'cannot_change_to_past', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (past date):', JSON.stringify(body, null, 2));
     return { status: 400, body };
   }
@@ -108,14 +110,14 @@ export const changeReservation = async (req) => {
   const now = getCurrentDateTime(timeZone).startOf('day');
   const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
   if (targetDateTime > cutoffDate) {
-    const body = { type: 'reservation.error', error: 'outside_reservation_window', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'outside_reservation_window', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (beyond cutoff):', JSON.stringify(body, null, 2));
     return { status: 400, body };
   }
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
     console.warn('[WARN][changeReservation] Open or close time missing or marked closed');
-    const body = { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'outside_business_hours', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (closed):', JSON.stringify(body, null, 2));
     return { status: 400, body };
   }
@@ -125,7 +127,7 @@ export const changeReservation = async (req) => {
   if (closeDateTime <= openDateTime) closeDateTime = closeDateTime.plus({ days: 1 });
 
   if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
-    const body = { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'outside_business_hours', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (outside hours):', JSON.stringify(body, null, 2));
     return { status: 400, body };
   }
@@ -136,7 +138,7 @@ export const changeReservation = async (req) => {
       .firstPage();
 
     if (match.length === 0) {
-      const body = { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode, ...hoursDetails };
+      const body = { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode, restaurantId, ...hoursDetails };
       console.log('[DEBUG][changeReservation] Returning (not found):', JSON.stringify(body, null, 2));
       return { status: 404, body };
     }
@@ -174,28 +176,31 @@ export const changeReservation = async (req) => {
     const sameSlotAll = allForDate.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
-      const body = { type: 'reservation.unavailable', available: false, reason: 'blocked', date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives: findNextAvailableSlots(targetDateTime), ...hoursDetails };
+      const body = { type: 'reservation.unavailable', available: false, reason: 'blocked', date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives: findNextAvailableSlots(targetDateTime), restaurantId, ...hoursDetails };
       console.log('[DEBUG][changeReservation] Returning (blocked):', JSON.stringify(body, null, 2));
       return { status: 409, body };
     }
 
     const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
     if (confirmedReservations.length >= maxReservations) {
-      const body = { type: 'reservation.unavailable', available: false, reason: 'full', date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives: findNextAvailableSlots(targetDateTime), ...hoursDetails };
+      const body = { type: 'reservation.unavailable', available: false, reason: 'full', date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives: findNextAvailableSlots(targetDateTime), restaurantId, ...hoursDetails };
       console.log('[DEBUG][changeReservation] Returning (full):', JSON.stringify(body, null, 2));
       return { status: 409, body };
     }
 
+    // Update the reservation
     await airtable(tableName).update(match[0].id, { date: normalizedDate, timeSlot: normalizedTime, restaurantId: config.restaurantId });
     await sendConfirmationEmail({ type: 'change', confirmationCode: normalizedCode, config });
-    await broadcastReservationUpdate('reservation.change', restaurantId); // NEW
+
+    // Broadcast the update for dashboards
+    await broadcastReservationUpdate('reservation.change', restaurantId);
 
     const successBody = { type: 'reservation.change', confirmationCode: normalizedCode, newDate: normalizedDate, newTimeSlot: normalizedTime, restaurantId: config.restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (success):', JSON.stringify(successBody, null, 2));
     return { status: 200, body: successBody };
   } catch (err) {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
-    const body = { type: 'reservation.error', error: 'internal_error', ...hoursDetails };
+    const body = { type: 'reservation.error', error: 'internal_error', restaurantId, ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (catch):', JSON.stringify(body, null, 2));
     return { status: 500, body };
   }
