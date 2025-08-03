@@ -31,30 +31,30 @@ export const checkAvailability = async (req) => {
   const { baseId, tableName, maxReservations, timeZone, futureCutoff } = config;
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
+  // Precompute hours details for all responses
+  const weekday = parseDateTime(normalizedDate, normalizedTime, timeZone)?.toFormat('cccc').toLowerCase() || 'monday';
+  const openKey = `${weekday}Open`;
+  const closeKey = `${weekday}Close`;
+  const openTime = config[openKey];
+  const closeTime = config[closeKey];
+  const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
+
   try {
     const currentTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
 
     if (!currentTime) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time' } };
+      return { status: 400, body: { type: 'availability.check.error', error: 'invalid_date_or_time', ...hoursDetails } };
     }
     if (isPast(normalizedDate, normalizedTime, timeZone)) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'cannot_check_past' } };
+      return { status: 400, body: { type: 'availability.check.error', error: 'cannot_check_past', ...hoursDetails } };
     }
     if (currentTime > cutoffDate) {
-      return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window' } };
+      return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window', ...hoursDetails } };
     }
 
     // Business hours check
-    const weekday = currentTime.toFormat('cccc').toLowerCase();
-    const openKey = `${weekday}Open`;
-    const closeKey = `${weekday}Close`;
-    const openTime = config[openKey];
-    const closeTime = config[closeKey];
-    const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
-
-    // If closed or missing hours
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
       return { 
         status: 400, 
@@ -197,6 +197,6 @@ export const checkAvailability = async (req) => {
     };
   } catch (err) {
     console.error('[ERROR] Airtable checkAvailability failure', err);
-    return { status: 500, body: { type: 'availability.check.error', error: 'airtable_query_failed' } };
+    return { status: 500, body: { type: 'availability.check.error', error: 'airtable_query_failed', ...hoursDetails } };
   }
 };
