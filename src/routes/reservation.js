@@ -2,20 +2,8 @@ import Airtable from 'airtable';
 import { parseDateTime, getCurrentDateTime, isPast } from '../utils/dateHelpers.js';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { BroadcastChannel } from 'broadcast-channel'; // NEW
 
 const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
-
-// Helper: broadcast to dashboards
-const broadcastReservationUpdate = async (type, restaurantId) => {
-  try {
-    const bc = new BroadcastChannel('reservations');
-    await bc.postMessage({ type, restaurantId, timestamp: Date.now() });
-    await bc.close();
-  } catch (err) {
-    console.error('[Broadcast] Failed to send update:', err);
-  }
-};
 
 // Helper: Build consistent business hours error details
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
@@ -37,13 +25,11 @@ const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
 export const createReservation = async (parsed, config) => {
   let { name, partySize, contactInfo, date, timeSlot, rawDate, rawTimeSlot } = parsed;
   const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
-
   const restaurantId = config.restaurantId;
 
   // Normalize with fallback to raw values
   const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
   const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
-
   if (!normalizedDate || !normalizedTime) throw new Error('invalid_date_or_time');
 
   const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
@@ -54,7 +40,7 @@ export const createReservation = async (parsed, config) => {
   if (isPast(normalizedDate, normalizedTime, timeZone)) throw new Error('cannot_book_in_past');
   if (reservationTime > cutoffDate) throw new Error('outside_reservation_window');
 
-  // Business hours validation (strong enforcement)
+  // Business hours validation
   const weekday = reservationTime.toFormat('cccc').toLowerCase();
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
@@ -70,12 +56,7 @@ export const createReservation = async (parsed, config) => {
 
   let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
   let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-
-  // Handle overnight hours (close after midnight)
-  if (closeDateTime <= openDateTime) {
-    closeDateTime = closeDateTime.plus({ days: 1 });
-  }
-
+  if (closeDateTime <= openDateTime) closeDateTime = closeDateTime.plus({ days: 1 });
   if (reservationTime < openDateTime || reservationTime > closeDateTime) {
     const err = new Error('outside_business_hours');
     err.details = hoursDetails;
@@ -89,7 +70,6 @@ export const createReservation = async (parsed, config) => {
   }
 
   const base = airtableClient.base(baseId);
-
   const reservations = await base(tableName)
     .select({
       filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
@@ -130,14 +110,14 @@ export const createReservation = async (parsed, config) => {
 
 export const reservation = async (req) => {
   const { restaurantId } = req.params;
-
   let parsed = req.body;
+
   if (typeof parsed.userMessage === 'string') {
     try {
       const fallback = JSON.parse(parsed.userMessage);
       parsed = { ...fallback, restaurantId: restaurantId, route: parsed.route };
     } catch (e) {
-      return { status: 400, body: { type: 'reservation.error', error: 'invalid_json_in_userMessage' } };
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_json_in_userMessage', restaurantId } };
     }
   } else {
     parsed.restaurantId = restaurantId;
@@ -146,12 +126,10 @@ export const reservation = async (req) => {
   try {
     const config = await loadRestaurantConfig(restaurantId);
     if (!config) {
-      return { status: 404, body: { type: 'reservation.error', error: 'config_not_found' } };
+      return { status: 404, body: { type: 'reservation.error', error: 'config_not_found', restaurantId } };
     }
 
-    const { baseId, tableName, maxReservations, futureCutoff, timeZone } = config;
-    const base = airtableClient.base(baseId);
-
+    const { maxReservations, futureCutoff, timeZone } = config;
     const { name, partySize, contactInfo, date, timeSlot, rawDate, rawTimeSlot } = parsed;
     const normalizedDate = typeof date === 'string' ? date.trim() : (rawDate || date);
     const normalizedTime = typeof timeSlot === 'string' ? timeSlot.toString().trim() : (rawTimeSlot || timeSlot);
@@ -161,7 +139,7 @@ export const reservation = async (req) => {
     const closeKey = `${weekday}Close`;
     const hoursDetails = buildOutsideHoursError(normalizedDate, config[openKey], config[closeKey], timeZone);
 
-    // Missing fields? Include hours in response
+    // Validate required fields
     const missing = [];
     if (!name) missing.push('name');
     if (!partySize) missing.push('partySize');
@@ -169,36 +147,36 @@ export const reservation = async (req) => {
     if (!date && !rawDate) missing.push('date');
     if (!timeSlot && !rawTimeSlot) missing.push('timeSlot');
     if (missing.length > 0) {
-      return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing, ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'missing_required_fields', missing, restaurantId, ...hoursDetails } };
     }
 
     if (!normalizedDate || !normalizedTime) {
-      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', restaurantId, ...hoursDetails } };
     }
 
     const now = getCurrentDateTime(timeZone).startOf('day');
     const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
     const reservationTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-
     if (!reservationTime) {
-      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', restaurantId, ...hoursDetails } };
     }
     if (isPast(normalizedDate, normalizedTime, timeZone)) {
-      return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past', ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'cannot_book_in_past', restaurantId, ...hoursDetails } };
     }
     if (reservationTime > cutoffDate) {
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window', ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window', restaurantId, ...hoursDetails } };
     }
 
     let openDateTime = parseDateTime(normalizedDate, config[openKey], timeZone);
     let closeDateTime = parseDateTime(normalizedDate, config[closeKey], timeZone);
     if (closeDateTime <= openDateTime) closeDateTime = closeDateTime.plus({ days: 1 });
-
     if (reservationTime < openDateTime || reservationTime > closeDateTime) {
-      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails } };
+      return { status: 400, body: { type: 'reservation.error', error: 'outside_business_hours', restaurantId, ...hoursDetails } };
     }
 
-    const reservations = await base(tableName)
+    // Check slot availability
+    const base = airtableClient.base(config.baseId);
+    const reservations = await base(config.tableName)
       .select({
         filterByFormula: `AND({dateFormatted} = '${normalizedDate}', {restaurantId} = '${restaurantId}')`,
         fields: ['status', 'timeSlot', 'date']
@@ -207,9 +185,7 @@ export const reservation = async (req) => {
 
     const isWithinBusinessHours = (time) => {
       let slotDT = parseDateTime(normalizedDate, time, timeZone);
-      if (closeDateTime <= openDateTime) {
-        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
-      }
+      if (closeDateTime <= openDateTime && slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
       return slotDT >= openDateTime && slotDT <= closeDateTime;
     };
 
@@ -221,26 +197,16 @@ export const reservation = async (req) => {
     };
 
     const findNextAvailableSlots = (centerTime, allReservations, maxSteps = 96) => {
-      let before = null;
-      let after = null;
-      let forward = centerTime;
-      let backward = centerTime;
-
+      let before = null, after = null, forward = centerTime, backward = centerTime;
       for (let i = 1; i <= maxSteps; i++) {
         forward = forward.plus({ minutes: 15 });
         const forwardTime = forward.toFormat('HH:mm');
-        if (isSlotAvailable(forwardTime, allReservations)) {
-          after = forwardTime;
-          break;
-        }
+        if (isSlotAvailable(forwardTime, allReservations)) { after = forwardTime; break; }
       }
       for (let i = 1; i <= maxSteps; i++) {
         backward = backward.minus({ minutes: 15 });
         const backwardTime = backward.toFormat('HH:mm');
-        if (isSlotAvailable(backwardTime, allReservations)) {
-          before = backwardTime;
-          break;
-        }
+        if (isSlotAvailable(backwardTime, allReservations)) { before = backwardTime; break; }
       }
       return { before, after };
     };
@@ -249,61 +215,32 @@ export const reservation = async (req) => {
     const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
     if (isBlocked) {
       const alternatives = findNextAvailableSlots(reservationTime, reservations, maxReservations);
-      return {
-        status: 409,
-        body: {
-          type: 'reservation.unavailable',
-          available: false,
-          reason: 'blocked',
-          remaining: 0,
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          alternatives,
-          ...hoursDetails
-        }
-      };
+      return { status: 409, body: { type: 'reservation.unavailable', available: false, reason: 'blocked', restaurantId, date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives, ...hoursDetails } };
     }
 
     const confirmedReservations = reservations.filter(r => {
       const slot = r.fields.timeSlot?.trim();
       const status = r.fields.status?.trim().toLowerCase();
       const slotDateTime = parseDateTime(normalizedDate, slot, timeZone);
-      return (
-        status === 'confirmed' &&
-        slotDateTime &&
-        !isPast(normalizedDate, slot, timeZone) &&
-        slotDateTime <= cutoffDate
-      );
+      return (status === 'confirmed' && slotDateTime && !isPast(normalizedDate, slot, timeZone) && slotDateTime <= cutoffDate);
     });
 
     const sameSlot = confirmedReservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
-    const confirmedCount = sameSlot.length;
-
-    if (confirmedCount >= maxReservations) {
+    if (sameSlot.length >= maxReservations) {
       const alternatives = findNextAvailableSlots(reservationTime, reservations);
-      return {
-        status: 409,
-        body: {
-          type: 'reservation.unavailable',
-          available: false,
-          reason: 'full',
-          remaining: 0,
-          date: normalizedDate,
-          timeSlot: normalizedTime,
-          alternatives,
-          ...hoursDetails
-        }
-      };
+      return { status: 409, body: { type: 'reservation.unavailable', available: false, reason: 'full', restaurantId, date: normalizedDate, timeSlot: normalizedTime, remaining: 0, alternatives, ...hoursDetails } };
     }
 
+    // Create reservation
     const { confirmationCode, openTime, closeTime } = await createReservation(parsed, { ...config, restaurantId });
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
-    await broadcastReservationUpdate('reservation.complete', restaurantId); // NEW
 
+    // Return with type + restaurantId for VivAChat broadcasting
     return {
       status: 201,
       body: {
         type: 'reservation.complete',
+        restaurantId,
         confirmationCode,
         name: parsed.name,
         partySize: parsed.partySize,
@@ -316,6 +253,6 @@ export const reservation = async (req) => {
   } catch (err) {
     console.error('[ROUTE][reservation] Error caught:', err);
     const extra = err.details ? { openTime: err.details.openTime, closeTime: err.details.closeTime } : {};
-    return { status: 500, body: { type: 'reservation.error', error: err.message || 'internal_server_error', ...extra } };
+    return { status: 500, body: { type: 'reservation.error', restaurantId, error: err.message || 'internal_server_error', ...extra } };
   }
 };
