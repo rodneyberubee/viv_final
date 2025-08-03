@@ -1,6 +1,18 @@
 import Airtable from 'airtable';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
+import { BroadcastChannel } from 'broadcast-channel'; // NEW
+
+// Helper: Broadcast updates to dashboard
+const broadcastReservationUpdate = async (type, restaurantId) => {
+  try {
+    const bc = new BroadcastChannel('reservations');
+    await bc.postMessage({ type, restaurantId, timestamp: Date.now() });
+    await bc.close();
+  } catch (err) {
+    console.error('[Broadcast] Failed to send update:', err);
+  }
+};
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
@@ -68,6 +80,7 @@ export const cancelReservation = async (req) => {
     await airtable(tableName).update(reservation.id, { status: 'canceled' });
 
     await sendConfirmationEmail({ type: 'cancel', confirmationCode, config });
+    await broadcastReservationUpdate('reservation.cancel', restaurantId); // NEW
 
     return {
       status: 200,
