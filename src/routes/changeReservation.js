@@ -75,15 +75,15 @@ export const changeReservation = async (req) => {
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
+  const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-    const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
         type: 'reservation.error', 
         error: 'outside_business_hours', 
-        ...details
+        ...hoursDetails
       } 
     };
   }
@@ -97,13 +97,12 @@ export const changeReservation = async (req) => {
   }
 
   if (targetDateTime < openDateTime || targetDateTime > closeDateTime) {
-    const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
     return { 
       status: 400, 
       body: { 
         type: 'reservation.error', 
         error: 'outside_business_hours', 
-        ...details
+        ...hoursDetails
       } 
     };
   }
@@ -119,7 +118,7 @@ export const changeReservation = async (req) => {
     if (match.length === 0) {
       return {
         status: 404,
-        body: { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode }
+        body: { type: 'reservation.error', error: 'not_found', confirmationCode: normalizedCode, ...hoursDetails }
       };
     }
 
@@ -183,7 +182,8 @@ export const changeReservation = async (req) => {
           date: normalizedDate,
           timeSlot: normalizedTime,
           remaining: 0,
-          alternatives
+          alternatives,
+          ...hoursDetails
         }
       };
     }
@@ -201,7 +201,8 @@ export const changeReservation = async (req) => {
           date: normalizedDate,
           timeSlot: normalizedTime,
           remaining: 0,
-          alternatives
+          alternatives,
+          ...hoursDetails
         }
       };
     }
@@ -222,7 +223,8 @@ export const changeReservation = async (req) => {
         confirmationCode: normalizedCode,
         newDate: normalizedDate,
         newTimeSlot: normalizedTime,
-        restaurantId: config.restaurantId
+        restaurantId: config.restaurantId,
+        ...hoursDetails
       }
     };
   } catch (err) {
