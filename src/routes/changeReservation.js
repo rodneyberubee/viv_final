@@ -6,6 +6,7 @@ import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
 // Helper: Consistent business hours error formatter
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
   try {
+    console.log('[DEBUG][buildOutsideHoursError] Raw open/close:', openTime, closeTime);
     const formattedOpen =
       openTime && openTime.toLowerCase() !== 'closed'
         ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a')
@@ -14,8 +15,10 @@ const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
       closeTime && closeTime.toLowerCase() !== 'closed'
         ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a')
         : null;
+    console.log('[DEBUG][buildOutsideHoursError] Formatted open/close:', formattedOpen, formattedClose);
     return { openTime: formattedOpen, closeTime: formattedClose };
   } catch {
+    console.warn('[WARN][buildOutsideHoursError] Failed to format hours');
     return { openTime: null, closeTime: null };
   }
 };
@@ -73,8 +76,10 @@ export const changeReservation = async (req) => {
   const weekday = targetDateTime?.toFormat('cccc').toLowerCase() || 'monday';
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
+  console.log(`[DEBUG][changeReservation] Using keys: ${openKey}, ${closeKey}`);
   const openTime = config[openKey];
   const closeTime = config[closeKey];
+  console.log('[DEBUG][changeReservation] Loaded open/close times:', openTime, closeTime);
   const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   if (!targetDateTime) {
@@ -97,6 +102,7 @@ export const changeReservation = async (req) => {
   }
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+    console.warn('[WARN][changeReservation] Open or close time missing or marked closed');
     const body = { type: 'reservation.error', error: 'outside_business_hours', ...hoursDetails };
     console.log('[DEBUG][changeReservation] Returning (closed):', JSON.stringify(body, null, 2));
     return { status: 400, body };
