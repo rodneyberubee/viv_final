@@ -1,18 +1,7 @@
 import Airtable from 'airtable';
 import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import { sendConfirmationEmail } from '../utils/sendConfirmationEmail.js';
-import { BroadcastChannel } from 'broadcast-channel'; // NEW
-
-// Helper: Broadcast updates to dashboard
-const broadcastReservationUpdate = async (event, restaurantId) => {
-  try {
-    const bc = new BroadcastChannel('reservations');
-    await bc.postMessage({ event, restaurantId, refresh: 1, timestamp: Date.now() });
-    await bc.close();
-  } catch (err) {
-    console.error('[Broadcast] Failed to send update:', err);
-  }
-};
+import { setRefreshFlag } from '../../routes/dashboard/dashboardRouter.js'; // NEW
 
 export const cancelReservation = async (req) => {
   const { restaurantId } = req.params;
@@ -88,8 +77,8 @@ export const cancelReservation = async (req) => {
       console.error('[WARN] Failed to send cancellation email:', err);
     }
 
-    // Notify dashboards after success
-    await broadcastReservationUpdate('reservation.cancel', restaurantId);
+    // Trigger dashboard refresh
+    setRefreshFlag(restaurantId);
 
     return {
       status: 200,
