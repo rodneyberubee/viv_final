@@ -2,6 +2,13 @@ import { loadRestaurantConfig } from '../utils/loadConfig.js';
 import Airtable from 'airtable';
 import { parseDateTime, isPast, getCurrentDateTime } from '../utils/dateHelpers.js';
 
+// Helper: Consistent business hours error formatter
+const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
+  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
+  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
+  return { openTime: formattedOpen, closeTime: formattedClose };
+};
+
 export const checkAvailability = async (req) => {
   const { restaurantId } = req.params;
   const { date, timeSlot, rawDate, rawTimeSlot } = req.body; // Added support for raw fallbacks
@@ -46,16 +53,15 @@ export const checkAvailability = async (req) => {
     const openTime = config[openKey];
     const closeTime = config[closeKey];
 
+    // If closed or missing hours
     if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
-      const formattedOpen = openTime ? parseDateTime(normalizedDate, openTime, timeZone).toFormat('hh:mm a') : null;
-      const formattedClose = closeTime ? parseDateTime(normalizedDate, closeTime, timeZone).toFormat('hh:mm a') : null;
+      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
       return { 
         status: 400, 
         body: { 
           type: 'availability.check.error', 
           error: 'outside_business_hours', 
-          openTime: formattedOpen, 
-          closeTime: formattedClose 
+          ...details
         } 
       };
     }
@@ -69,15 +75,13 @@ export const checkAvailability = async (req) => {
     }
 
     if (currentTime < openDateTime || currentTime > closeDateTime) {
-      const formattedOpen = openDateTime.toFormat('hh:mm a');
-      const formattedClose = closeDateTime.toFormat('hh:mm a');
+      const details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
       return { 
         status: 400, 
         body: { 
           type: 'availability.check.error', 
           error: 'outside_business_hours',
-          openTime: formattedOpen,
-          closeTime: formattedClose
+          ...details
         } 
       };
     }
