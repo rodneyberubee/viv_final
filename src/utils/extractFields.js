@@ -55,6 +55,10 @@ export const extractFields = async (vivInput, restaurantId) => {
     }
   };
 
+  const isLikelyConfirmationCode = (val) => {
+    return typeof val === 'string' && /^[a-zA-Z0-9]{6,12}$/.test(val);
+  };
+
   try {
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -119,6 +123,15 @@ export const extractFields = async (vivInput, restaurantId) => {
           parsed.parsed.rawNewTimeSlot = parsed.parsed.newTimeSlot;
           const parsedNewTime = parseFlexibleTime(parsed.parsed.newTimeSlot);
           parsed.parsed.newTimeSlot = safeFormat(parsedNewTime, 'HH:mm', 'newTimeSlot');
+        }
+
+        // Fix: If confirmationCode missing but name looks like one, move it
+        if (parsed.intent === 'changeReservation') {
+          if (!parsed.parsed.confirmationCode && isLikelyConfirmationCode(parsed.parsed.name)) {
+            parsed.parsed.confirmationCode = parsed.parsed.name;
+            parsed.parsed.name = null;
+            console.log('[DEBUG][extractFields] Moved name to confirmationCode for changeReservation');
+          }
         }
       } else {
         console.warn('[DEBUG][extractFields] Missing parsed object in AI response');
