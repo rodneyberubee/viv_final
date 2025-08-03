@@ -7,9 +7,19 @@ const airtableClient = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY });
 
 // Helper: Build consistent business hours error details
 const buildOutsideHoursError = (date, openTime, closeTime, timeZone) => {
-  const formattedOpen = openTime ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a') : null;
-  const formattedClose = closeTime ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a') : null;
-  return { openTime: formattedOpen, closeTime: formattedClose };
+  try {
+    const formattedOpen =
+      openTime && openTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, openTime, timeZone).toFormat('hh:mm a')
+        : null;
+    const formattedClose =
+      closeTime && closeTime.toLowerCase() !== 'closed'
+        ? parseDateTime(date, closeTime, timeZone).toFormat('hh:mm a')
+        : null;
+    return { openTime: formattedOpen, closeTime: formattedClose };
+  } catch {
+    return { openTime: null, closeTime: null };
+  }
 };
 
 export const createReservation = async (parsed, config) => {
@@ -38,10 +48,11 @@ export const createReservation = async (parsed, config) => {
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
+  const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
     const err = new Error('outside_business_hours');
-    err.details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
+    err.details = hoursDetails;
     throw err;
   }
 
@@ -55,12 +66,14 @@ export const createReservation = async (parsed, config) => {
 
   if (reservationTime < openDateTime || reservationTime > closeDateTime) {
     const err = new Error('outside_business_hours');
-    err.details = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
+    err.details = hoursDetails;
     throw err;
   }
 
   if (!name?.trim() || !contactInfo?.trim()) {
-    throw new Error('missing_required_fields');
+    const err = new Error('missing_required_fields');
+    err.details = hoursDetails;
+    throw err;
   }
 
   const base = airtableClient.base(baseId);
@@ -74,10 +87,18 @@ export const createReservation = async (parsed, config) => {
 
   const sameSlotAll = reservations.filter(r => r.fields.timeSlot?.trim() === normalizedTime);
   const isBlocked = sameSlotAll.some(r => r.fields.status?.trim().toLowerCase() === 'blocked');
-  if (isBlocked) throw new Error('blocked_slot');
+  if (isBlocked) {
+    const err = new Error('blocked_slot');
+    err.details = hoursDetails;
+    throw err;
+  }
 
   const confirmedReservations = sameSlotAll.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed');
-  if (confirmedReservations.length >= maxReservations) throw new Error('slot_full');
+  if (confirmedReservations.length >= maxReservations) {
+    const err = new Error('slot_full');
+    err.details = hoursDetails;
+    throw err;
+  }
 
   const confirmationCode = Math.random().toString(36).substr(2, 9);
   const fields = {
@@ -92,7 +113,7 @@ export const createReservation = async (parsed, config) => {
   };
 
   await base(tableName).create([{ fields }]);
-  return { confirmationCode };
+  return { confirmationCode, ...hoursDetails };
 };
 
 export const reservation = async (req) => {
@@ -263,7 +284,7 @@ export const reservation = async (req) => {
       };
     }
 
-    const { confirmationCode } = await createReservation(parsed, { ...config, restaurantId });
+    const { confirmationCode, openTime, closeTime } = await createReservation(parsed, { ...config, restaurantId });
     await sendConfirmationEmail({ type: 'reservation', confirmationCode, config });
 
     return {
@@ -275,7 +296,8 @@ export const reservation = async (req) => {
         partySize: parsed.partySize,
         timeSlot: parsed.timeSlot,
         date: parsed.date,
-        ...hoursDetails
+        openTime,
+        closeTime
       }
     };
   } catch (err) {
