@@ -39,25 +39,44 @@ export const checkAvailability = async (req) => {
       return { status: 400, body: { type: 'availability.check.error', error: 'outside_reservation_window' } };
     }
 
-    // Business hours check
+    // Business hours check (strong enforcement)
     const weekday = currentTime.toFormat('cccc').toLowerCase();
     const openKey = `${weekday}Open`;
     const closeKey = `${weekday}Close`;
     const openTime = config[openKey];
     const closeTime = config[closeKey];
-    if (openTime && closeTime) {
-      const openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
-      const closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
-      if (currentTime < openDateTime || currentTime > closeDateTime) {
-        return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
-      }
+
+    if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
+      return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
+    }
+
+    let openDateTime = parseDateTime(normalizedDate, openTime, timeZone);
+    let closeDateTime = parseDateTime(normalizedDate, closeTime, timeZone);
+
+    // Handle overnight hours (close after midnight)
+    if (closeDateTime <= openDateTime) {
+      closeDateTime = closeDateTime.plus({ days: 1 });
+    }
+
+    if (currentTime < openDateTime || currentTime > closeDateTime) {
+      return { status: 400, body: { type: 'availability.check.error', error: 'outside_business_hours' } };
     }
 
     // Query only for this restaurant + date
     const formula = `AND({restaurantId} = '${config.restaurantId}', {dateFormatted} = '${normalizedDate}')`;
     const allReservations = await airtable(tableName).select({ filterByFormula: formula }).all();
 
+    // Check if time is within business hours
+    const isWithinBusinessHours = (time) => {
+      let slotDT = parseDateTime(normalizedDate, time, timeZone);
+      if (closeDateTime <= openDateTime) {
+        if (slotDT < openDateTime) slotDT = slotDT.plus({ days: 1 });
+      }
+      return slotDT >= openDateTime && slotDT <= closeDateTime;
+    };
+
     const isSlotAvailable = (time) => {
+      if (!isWithinBusinessHours(time)) return false;
       const matching = allReservations.filter(r => r.fields.timeSlot?.trim() === time && r.fields.status?.trim().toLowerCase() !== 'blocked');
       const confirmedCount = matching.filter(r => r.fields.status?.trim().toLowerCase() === 'confirmed').length;
       return confirmedCount < maxReservations;
