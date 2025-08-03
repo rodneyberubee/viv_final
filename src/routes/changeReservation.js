@@ -56,27 +56,27 @@ export const changeReservation = async (req) => {
   const airtable = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
 
   const targetDateTime = parseDateTime(normalizedDate, normalizedTime, timeZone);
-  if (!targetDateTime) {
-    return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time' } };
-  }
-  if (isPast(normalizedDate, normalizedTime, timeZone)) {
-    return { status: 400, body: { type: 'reservation.error', error: 'cannot_change_to_past' } };
-  }
-
-  const now = getCurrentDateTime(timeZone).startOf('day');
-  const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
-  if (targetDateTime > cutoffDate) {
-    return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window' } };
-  }
-
-  // Business hours validation (strong enforcement)
-  const weekday = targetDateTime.toFormat('cccc').toLowerCase();
+  const weekday = targetDateTime?.toFormat('cccc').toLowerCase() || 'monday';
   const openKey = `${weekday}Open`;
   const closeKey = `${weekday}Close`;
   const openTime = config[openKey];
   const closeTime = config[closeKey];
   const hoursDetails = buildOutsideHoursError(normalizedDate, openTime, closeTime, timeZone);
 
+  if (!targetDateTime) {
+    return { status: 400, body: { type: 'reservation.error', error: 'invalid_date_or_time', ...hoursDetails } };
+  }
+  if (isPast(normalizedDate, normalizedTime, timeZone)) {
+    return { status: 400, body: { type: 'reservation.error', error: 'cannot_change_to_past', ...hoursDetails } };
+  }
+
+  const now = getCurrentDateTime(timeZone).startOf('day');
+  const cutoffDate = now.plus({ days: futureCutoff }).endOf('day');
+  if (targetDateTime > cutoffDate) {
+    return { status: 400, body: { type: 'reservation.error', error: 'outside_reservation_window', ...hoursDetails } };
+  }
+
+  // Business hours validation (strong enforcement)
   if (!openTime || !closeTime || openTime.toLowerCase() === 'closed' || closeTime.toLowerCase() === 'closed') {
     return { 
       status: 400, 
@@ -229,6 +229,6 @@ export const changeReservation = async (req) => {
     };
   } catch (err) {
     console.error('[ERROR][changeReservation] Unexpected failure:', err);
-    return { status: 500, body: { type: 'reservation.error', error: 'internal_error' } };
+    return { status: 500, body: { type: 'reservation.error', error: 'internal_error', ...hoursDetails } };
   }
 };
