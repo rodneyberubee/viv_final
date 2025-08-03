@@ -139,6 +139,12 @@ export const askVivRouter = async (req, res) => {
         console.warn('[askVivRouter] Adding missing closeTime from parsed');
         result.body.closeTime = parsed.closeTime;
       }
+      if (!result.body.openTime || !result.body.closeTime) {
+        console.warn('[askVivRouter] ⚠️ Hours still missing in final response:', {
+          openTime: result.body.openTime,
+          closeTime: result.body.closeTime
+        });
+      }
     }
 
     console.log(`[askVivRouter] Final result for ${parsed.type}:`, JSON.stringify(result.body, null, 2));
