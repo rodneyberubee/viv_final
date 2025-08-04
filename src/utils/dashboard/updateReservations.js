@@ -25,13 +25,20 @@ export async function updateReservations(restaurantId, updatesArray) {
         let filteredFields = Object.fromEntries(
           Object.entries(updatedFields).filter(
             ([key, val]) =>
-              !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
+              !excludedFields.includes(key) &&
+              val !== '' &&
+              val !== null &&
+              val !== undefined
           )
         );
 
-        // Normalize `hidden` as "1" or "0"
+        // Normalize `hidden`: "1" for hidden, remove if visible
         if (updatedFields.hasOwnProperty('hidden')) {
-          filteredFields.hidden = updatedFields.hidden ? "1" : "0";
+          if (updatedFields.hidden) {
+            filteredFields.hidden = "1"; // mark as hidden
+          } else {
+            delete filteredFields.hidden; // clear field for visible
+          }
         }
 
         // Always enforce restaurantId
@@ -42,7 +49,7 @@ export async function updateReservations(restaurantId, updatesArray) {
           filteredFields = {
             restaurantId,
             date: updatedFields.date || new Date().toISOString().split('T')[0],
-            hidden: "0", // new records default to visible
+            // Do NOT set hidden by default — leave blank (visible)
           };
         }
 
