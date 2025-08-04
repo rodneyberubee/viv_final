@@ -20,17 +20,25 @@ export async function updateReservations(restaurantId, updatesArray) {
     const results = [];
 
     for (const { recordId, updatedFields } of updatesArray) {
-      try {
-        // Exclude computed or read-only fields
-        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted', 'hidden'];
+  try {
+    // Exclude computed or read-only fields (but keep hidden so we can update it)
+    const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
 
-        // Remove excluded and blank fields
-        let filteredFields = Object.fromEntries(
-          Object.entries(updatedFields).filter(
-            ([key, val]) =>
-              !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
-          )
-        );
+    // Remove excluded and blank fields
+    let filteredFields = Object.fromEntries(
+      Object.entries(updatedFields).filter(
+        ([key, val]) =>
+          !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
+      )
+    );
+
+    // Ensure `hidden` is a proper boolean if present
+    if (typeof updatedFields.hidden !== 'undefined') {
+      filteredFields.hidden = Boolean(updatedFields.hidden);
+    }
+
+    // Always enforce restaurantId
+    filteredFields.restaurantId = restaurantId;
 
         // Always enforce restaurantId from path param
         filteredFields.restaurantId = restaurantId;
