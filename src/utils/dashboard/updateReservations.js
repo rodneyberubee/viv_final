@@ -30,19 +30,29 @@ export async function updateReservations(restaurantId, updatesArray) {
         // 🔄 Force the restaurantId to remain correct
         filteredFields.restaurantId = restaurantId;
 
-        // (Optional) Fetch the record first to ensure it belongs to this restaurant
-        const existingRecord = await base(config.tableName).find(recordId);
-        if (existingRecord.fields.restaurantId !== restaurantId) {
-          console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
-          results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
-          continue;
+        let result;
+
+        if (!recordId) {
+          // CREATE new record
+          result = await base(config.tableName).create(filteredFields);
+          console.log('[DEBUG] Created new reservation:', result.id);
+        } else {
+          // (Optional) Fetch the record first to ensure it belongs to this restaurant
+          const existingRecord = await base(config.tableName).find(recordId);
+          if (existingRecord.fields.restaurantId !== restaurantId) {
+            console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
+            results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
+            continue;
+          }
+
+          // UPDATE existing record
+          result = await base(config.tableName).update(recordId, filteredFields);
+          console.log('[DEBUG] Updated reservation:', result.id);
         }
 
-        const result = await base(config.tableName).update(recordId, filteredFields);
-        console.log('[DEBUG] Reservation update result:', result.id);
         results.push({ success: true, id: result.id });
       } catch (err) {
-        console.error('[ERROR] Failed to update recordId:', recordId, err.message);
+        console.error('[ERROR] Failed to update/create recordId:', recordId || '(new)', err.message);
         results.push({ success: false, recordId, error: err.message });
       }
     }
