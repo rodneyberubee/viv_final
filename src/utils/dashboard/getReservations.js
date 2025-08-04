@@ -43,7 +43,8 @@ export async function getReservations(restaurantId) {
         confirmationCode: fields.confirmationCode || '—',
         rawConfirmationCode: fields.rawConfirmationCode || '',
         dateFormatted: fields.dateFormatted || '',
-        hidden: fields.hidden === true || fields.hidden === 'true' // <-- FIXED: preserve boolean
+        // Convert hidden string ("1"/"0") to boolean for frontend
+        hidden: fields.hidden === '1'
       };
     });
 
