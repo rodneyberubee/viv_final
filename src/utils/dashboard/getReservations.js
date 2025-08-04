@@ -17,7 +17,6 @@ export async function getReservations(restaurantId) {
       return [];
     }
 
-    // 🔄 Filter by restaurantId to prevent cross-restaurant data fetch
     const filterByFormula = `{restaurantId} = '${restaurantId}'`;
 
     const records = await base(config.tableName)
@@ -29,20 +28,24 @@ export async function getReservations(restaurantId) {
 
     console.log(`[DEBUG] Fetched ${records.length} reservation(s) for ${restaurantId}`);
 
-    const parsed = records.map(record => ({
-      id: record.id,
-      date: record.fields.date || '',
-      timeSlot: record.fields.timeSlot || '',
-      name: record.fields.name || '—',
-      partySize: record.fields.partySize || 1,
-      contactInfo: record.fields.contactInfo || '',
-      status: record.fields.status || 'pending',
-      notes: record.fields.notes || '',
-      confirmationCode: record.fields.confirmationCode || '—',
-      rawConfirmationCode: record.fields.rawConfirmationCode || '',
-      dateFormatted: record.fields.dateFormatted || '',
-      hidden: record.fields.hidden || false // <-- Added field for persistent hide support
-    }));
+    const parsed = records.map(record => {
+      const fields = record.fields;
+
+      return {
+        id: record.id,
+        date: fields.date || '',
+        timeSlot: fields.timeSlot || '',
+        name: fields.name || '—',
+        partySize: fields.partySize || 1,
+        contactInfo: fields.contactInfo || '',
+        status: fields.status || 'pending',
+        notes: fields.notes || '',
+        confirmationCode: fields.confirmationCode || '—',
+        rawConfirmationCode: fields.rawConfirmationCode || '',
+        dateFormatted: fields.dateFormatted || '',
+        hidden: fields.hidden === true || fields.hidden === 'true' // <-- FIXED: preserve boolean
+      };
+    });
 
     console.log('[DEBUG] Mapped reservations:', parsed);
     return parsed;
