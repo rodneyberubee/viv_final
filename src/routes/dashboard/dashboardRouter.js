@@ -118,11 +118,24 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
       'sundayOpen', 'sundayClose'
     ];
 
+    // Numeric fields that need type coercion
+    const numericFields = ['maxReservations', 'futureCutoff', 'cutoffTime'];
+
     const sanitizedUpdates = {};
     const droppedFields = [];
     for (const key in updates) {
       if (allowedFields.includes(key)) {
-        sanitizedUpdates[key] = updates[key];
+        let value = updates[key];
+        if (numericFields.includes(key)) {
+          const parsed = parseInt(value, 10);
+          if (!isNaN(parsed)) {
+            value = parsed;
+          } else {
+            console.warn(`[WARN] Skipping invalid number for ${key}:`, value);
+            continue; // skip invalid numeric value
+          }
+        }
+        sanitizedUpdates[key] = value;
       } else {
         droppedFields.push(key);
       }
