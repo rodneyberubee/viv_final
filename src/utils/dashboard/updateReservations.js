@@ -20,37 +20,39 @@ export async function updateReservations(restaurantId, updatesArray) {
     const results = [];
 
     for (const { recordId, updatedFields } of updatesArray) {
-  try {
-        // Exclude computed or read-only fields (but keep `hidden` so we can update it)
-    const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
+      try {
+        // Exclude computed or read-only fields (but keep `hidden`)
+        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
 
-    // Preserve `hidden` as-is if present, otherwise strip out unwanted fields
-    let filteredFields = Object.fromEntries(
-      Object.entries(updatedFields).filter(
-        ([key, val]) =>
-          !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
-      )
-    );
+        let filteredFields = Object.fromEntries(
+          Object.entries(updatedFields).filter(
+            ([key, val]) =>
+              !excludedFields.includes(key) &&
+              val !== '' &&
+              val !== null &&
+              val !== undefined
+          )
+        );
 
-    // If `hidden` exists in the payload, make sure it is a boolean
-    if (updatedFields.hasOwnProperty('hidden')) {
-      filteredFields.hidden = Boolean(updatedFields.hidden);
-    }
+        // Ensure `hidden` is a proper boolean if provided
+        if (updatedFields.hasOwnProperty('hidden')) {
+          filteredFields.hidden =
+            updatedFields.hidden === true || updatedFields.hidden === 'true';
+        }
 
-    // Always enforce restaurantId
-    filteredFields.restaurantId = restaurantId;
-
-
-        // Always enforce restaurantId from path param
+        // Always enforce restaurantId
         filteredFields.restaurantId = restaurantId;
 
-        // If creating a new record, enforce at least restaurantId and date
+        // If creating a new record, enforce at least restaurantId and date (preserve hidden if present)
         if (!recordId) {
           filteredFields = {
             restaurantId,
-            date: updatedFields.date || new Date().toISOString().split('T')[0], // default to today
+            date: updatedFields.date || new Date().toISOString().split('T')[0],
+            ...(updatedFields.hasOwnProperty('hidden') && { hidden: filteredFields.hidden }),
           };
         }
+
+        console.log('[DEBUG] Payload to Airtable:', filteredFields);
 
         let result;
         if (!recordId) {
@@ -58,17 +60,11 @@ export async function updateReservations(restaurantId, updatesArray) {
           result = await base(config.tableName).create(filteredFields);
           console.log('[DEBUG] Created new reservation:', result.id);
         } else {
-          // Validate ownership of the record
+          // Validate ownership
           const existingRecord = await base(config.tableName).find(recordId);
           if (existingRecord.fields.restaurantId !== restaurantId) {
-            console.warn(
-              `[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`
-            );
-            results.push({
-              success: false,
-              recordId,
-              error: 'Record does not belong to this restaurant',
-            });
+            console.warn(`[WARN] Attempted to update a record that does not belong to ${restaurantId}`);
+            results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
             continue;
           }
 
@@ -79,11 +75,7 @@ export async function updateReservations(restaurantId, updatesArray) {
 
         results.push({ success: true, id: result.id });
       } catch (err) {
-        console.error(
-          '[ERROR] Failed to update/create recordId:',
-          recordId || '(new)',
-          err.message
-        );
+        console.error('[ERROR] Failed to update/create recordId:', recordId || '(new)', err.message);
         results.push({ success: false, recordId, error: err.message });
       }
     }
