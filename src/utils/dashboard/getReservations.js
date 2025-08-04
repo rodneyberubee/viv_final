@@ -42,9 +42,7 @@ export async function getReservations(restaurantId) {
         notes: fields.notes || '',
         confirmationCode: fields.confirmationCode || '—',
         rawConfirmationCode: fields.rawConfirmationCode || '',
-        dateFormatted: fields.dateFormatted || '',
-        hidden: fields.hidden,                     // raw value as stored in Airtable
-        hiddenBool: String(fields.hidden) === '1', // normalized boolean for frontend
+        dateFormatted: fields.dateFormatted || ''
       };
     });
 
