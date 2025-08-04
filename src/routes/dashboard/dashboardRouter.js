@@ -108,10 +108,10 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
       return res.status(404).json({ error: 'No matching config found' });
     }
 
-    // Only allow valid Airtable fields
+    // Only allow editable Airtable fields (exclude computed fields like slug, restaurantIdFormula, calibratedTime)
     const allowedFields = [
       'baseId', 'tableName', 'maxReservations', 'cutoffTime', 'futureCutoff',
-      'name', 'slug', 'timeZone', 'calibratedTime',
+      'name', 'timeZone',
       'mondayOpen', 'mondayClose', 'tuesdayOpen', 'tuesdayClose',
       'wednesdayOpen', 'wednesdayClose', 'thursdayOpen', 'thursdayClose',
       'fridayOpen', 'fridayClose', 'saturdayOpen', 'saturdayClose',
@@ -142,11 +142,11 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
     }
 
     if (droppedFields.length > 0) {
-      console.warn('[DEBUG] Dropped invalid fields from updateConfig:', droppedFields);
+      console.warn('[DEBUG] Dropped invalid or non-editable fields from updateConfig:', droppedFields);
     }
 
     if (Object.keys(sanitizedUpdates).length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
+      return res.status(400).json({ error: 'No valid fields to update', droppedFields });
     }
 
     console.log('[DEBUG] Sanitized updates:', sanitizedUpdates);
@@ -155,7 +155,7 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
     setRefreshFlag(restaurantId); // <-- Trigger refresh flag
     console.log('[DEBUG] Config update result ID:', result.id);
     res.setHeader('Content-Type', 'application/json');
-    return res.status(200).json({ success: true, updated: result });
+    return res.status(200).json({ success: true, updated: result, droppedFields });
   } catch (err) {
     console.error('[ERROR] Failed to update config:', err);
     return res.status(500).json({ error: 'Failed to update config' });
