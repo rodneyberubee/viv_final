@@ -21,54 +21,42 @@ export async function updateReservations(restaurantId, updatesArray) {
 
     for (const { recordId, updatedFields } of updatesArray) {
       try {
-        // Exclude computed or read-only fields (but keep `hidden`)
         const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
-
         let filteredFields = Object.fromEntries(
           Object.entries(updatedFields).filter(
             ([key, val]) =>
-              !excludedFields.includes(key) &&
-              val !== '' &&
-              val !== null &&
-              val !== undefined
+              !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
           )
         );
 
-        // Ensure `hidden` is a proper boolean if provided
+        // Normalize `hidden` as "1" or "0"
         if (updatedFields.hasOwnProperty('hidden')) {
-          filteredFields.hidden =
-            updatedFields.hidden === true || updatedFields.hidden === 'true';
+          filteredFields.hidden = updatedFields.hidden ? "1" : "0";
         }
 
         // Always enforce restaurantId
         filteredFields.restaurantId = restaurantId;
 
-        // If creating a new record, enforce at least restaurantId and date (preserve hidden if present)
+        // If creating a new record, enforce at least restaurantId and date
         if (!recordId) {
           filteredFields = {
             restaurantId,
             date: updatedFields.date || new Date().toISOString().split('T')[0],
-            ...(updatedFields.hasOwnProperty('hidden') && { hidden: filteredFields.hidden }),
+            hidden: "0", // new records default to visible
           };
         }
 
-        console.log('[DEBUG] Payload to Airtable:', filteredFields);
-
         let result;
         if (!recordId) {
-          // CREATE new record
           result = await base(config.tableName).create(filteredFields);
           console.log('[DEBUG] Created new reservation:', result.id);
         } else {
-          // Validate ownership
           const existingRecord = await base(config.tableName).find(recordId);
           if (existingRecord.fields.restaurantId !== restaurantId) {
-            console.warn(`[WARN] Attempted to update a record that does not belong to ${restaurantId}`);
+            console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
             results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
             continue;
           }
-
-          // UPDATE existing record
           result = await base(config.tableName).update(recordId, filteredFields);
           console.log('[DEBUG] Updated reservation:', result.id);
         }
