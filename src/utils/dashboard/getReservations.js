@@ -40,7 +40,8 @@ export async function getReservations(restaurantId) {
       notes: record.fields.notes || '',
       confirmationCode: record.fields.confirmationCode || '—',
       rawConfirmationCode: record.fields.rawConfirmationCode || '',
-      dateFormatted: record.fields.dateFormatted || ''
+      dateFormatted: record.fields.dateFormatted || '',
+      hidden: record.fields.hidden || false // <-- Added field for persistent hide support
     }));
 
     console.log('[DEBUG] Mapped reservations:', parsed);
