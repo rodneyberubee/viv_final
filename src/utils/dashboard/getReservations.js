@@ -90,7 +90,7 @@ export async function getReservations(restaurantId) {
         dateFormatted: fields.dateFormatted || '',
         // Convert hidden string ("1"/"0") to boolean for frontend
         hidden: fields.hidden,
-        hiddenBool: fields.hidden === '1'
+        hiddenBool: String(fields.hidden) === '1',
       };
     });
 
