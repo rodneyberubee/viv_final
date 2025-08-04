@@ -46,7 +46,6 @@ export const dashboardConfig = async (restaurantId) => {
       restaurantId: cleanRestaurantId,
       baseId,
       tableName,
-      tableName: fields.tableName || null, // optional new field for table mapping
       maxReservations: fields.maxReservations,
       cutoffTime: fields.cutoffTime,
       futureCutoff: fields.futureCutoff,
