@@ -25,8 +25,6 @@ export async function updateReservations(restaurantId, updatesArray) {
           Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
         );
 
-        // FORCE hidden to "1" no matter what when updating
-        filteredFields.hidden = "1";
         filteredFields.restaurantId = restaurantId;
 
         if (!recordId) {
@@ -52,11 +50,6 @@ export async function updateReservations(restaurantId, updatesArray) {
           }
           result = await base(config.tableName).update(recordId, filteredFields);
           console.log('[DEBUG] Updated reservation fields returned:', result.fields);
-        }
-
-        // Check if Airtable actually wrote the "1"
-        if (result.fields.hidden !== "1") {
-          console.error(`[ERROR] Airtable did not update 'hidden' to "1" for record ${recordId}`);
         }
 
         results.push({ success: true, id: result.id });
