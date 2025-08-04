@@ -28,22 +28,23 @@ export async function updateReservations(restaurantId, updatesArray) {
           )
         );
 
-        // Always send hidden as string "1" or "0"
-        if (updatedFields.hasOwnProperty('hidden')) {
-          filteredFields.hidden = updatedFields.hidden ? "1" : "0";
-        }
-
         // Always enforce restaurantId
         filteredFields.restaurantId = restaurantId;
 
-        // If creating a new record
+        // Always enforce hidden as "1" or "0"
+        filteredFields.hidden = updatedFields.hidden ? "1" : "0";
+
+        // Merge for new records instead of overwriting
         if (!recordId) {
           filteredFields = {
+            ...filteredFields,
             restaurantId,
             date: updatedFields.date || new Date().toISOString().split('T')[0],
-            hidden: "0", // default to visible
           };
         }
+
+        // Debug log: what we are actually sending
+        console.log('[DEBUG] Final fields sent to Airtable:', filteredFields);
 
         let result;
         if (!recordId) {
