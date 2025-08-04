@@ -24,24 +24,24 @@ export async function updateReservations(restaurantId, updatesArray) {
         const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
         let filteredFields = Object.fromEntries(
           Object.entries(updatedFields).filter(
-            ([key]) => !excludedFields.includes(key) // do not exclude based on value
+            ([key]) => !excludedFields.includes(key)
           )
         );
 
-        // Normalize `hidden`: "1" for hidden, "" for visible
+        // Always send hidden as string "1" or "0"
         if (updatedFields.hasOwnProperty('hidden')) {
-          filteredFields.hidden = updatedFields.hidden ? "1" : ""; // explicit string for Airtable
+          filteredFields.hidden = updatedFields.hidden ? "1" : "0";
         }
 
         // Always enforce restaurantId
         filteredFields.restaurantId = restaurantId;
 
-        // If creating a new record, enforce at least restaurantId and date
+        // If creating a new record
         if (!recordId) {
           filteredFields = {
             restaurantId,
             date: updatedFields.date || new Date().toISOString().split('T')[0],
-            hidden: "", // default to visible
+            hidden: "0", // default to visible
           };
         }
 
@@ -52,14 +52,8 @@ export async function updateReservations(restaurantId, updatesArray) {
         } else {
           const existingRecord = await base(config.tableName).find(recordId);
           if (existingRecord.fields.restaurantId !== restaurantId) {
-            console.warn(
-              `[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`
-            );
-            results.push({
-              success: false,
-              recordId,
-              error: 'Record does not belong to this restaurant',
-            });
+            console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
+            results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
             continue;
           }
           result = await base(config.tableName).update(recordId, filteredFields);
@@ -68,11 +62,7 @@ export async function updateReservations(restaurantId, updatesArray) {
 
         results.push({ success: true, id: result.id });
       } catch (err) {
-        console.error(
-          '[ERROR] Failed to update/create recordId:',
-          recordId || '(new)',
-          err.message
-        );
+        console.error('[ERROR] Failed to update/create recordId:', recordId || '(new)', err.message);
         results.push({ success: false, recordId, error: err.message });
       }
     }
