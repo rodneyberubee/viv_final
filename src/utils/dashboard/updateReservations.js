@@ -25,6 +25,15 @@ export async function updateReservations(restaurantId, updatesArray) {
           Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
         );
 
+        // Normalize partySize for Airtable (convert to number or null)
+        if (filteredFields.hasOwnProperty('partySize')) {
+          if (filteredFields.partySize === '' || filteredFields.partySize === undefined) {
+            filteredFields.partySize = null;
+          } else {
+            filteredFields.partySize = parseInt(filteredFields.partySize, 10) || null;
+          }
+        }
+
         filteredFields.restaurantId = restaurantId;
 
         if (!recordId) {
