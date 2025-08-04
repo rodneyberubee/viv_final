@@ -4,6 +4,7 @@ import { updateReservations } from '../../utils/dashboard/updateReservations.js'
 import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
 import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
 import { requireAuth } from '../../../middleware/requireAuth.js'; // ✅ Auth middleware
+import { DateTime } from 'luxon';
 
 export const dashboardRouter = express.Router();
 
@@ -32,6 +33,15 @@ const enforceRestaurantAccess = (req, res) => {
     return null;
   }
   return restaurantId;
+};
+
+// Normalize time input to 24-hour HH:mm
+const normalizeTime = (value) => {
+  if (!value || typeof value !== 'string') return null;
+  let dt = DateTime.fromFormat(value.trim(), 'H:mm');
+  if (!dt.isValid) dt = DateTime.fromFormat(value.trim(), 'h:mm a');
+  if (!dt.isValid) return null;
+  return dt.toFormat('HH:mm');
 };
 
 // ✅ GET /api/dashboard/:restaurantId/reservations
@@ -120,6 +130,12 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
 
     // Numeric fields that need type coercion
     const numericFields = ['maxReservations', 'futureCutoff', 'cutoffTime'];
+    const timeFields = [
+      'mondayOpen', 'mondayClose', 'tuesdayOpen', 'tuesdayClose',
+      'wednesdayOpen', 'wednesdayClose', 'thursdayOpen', 'thursdayClose',
+      'fridayOpen', 'fridayClose', 'saturdayOpen', 'saturdayClose',
+      'sundayOpen', 'sundayClose'
+    ];
 
     const sanitizedUpdates = {};
     const droppedFields = [];
@@ -133,6 +149,15 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
           } else {
             console.warn(`[WARN] Skipping invalid number for ${key}:`, value);
             continue; // skip invalid numeric value
+          }
+        }
+        if (timeFields.includes(key)) {
+          const normalized = normalizeTime(value);
+          if (normalized) {
+            value = normalized;
+          } else {
+            console.warn(`[WARN] Skipping invalid time for ${key}:`, value);
+            continue; // skip invalid time
           }
         }
         sanitizedUpdates[key] = value;
