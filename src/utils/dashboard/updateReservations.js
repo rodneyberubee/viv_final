@@ -22,26 +22,44 @@ export async function updateReservations(restaurantId, updatesArray) {
     for (const { recordId, updatedFields } of updatesArray) {
       try {
         // Exclude computed or read-only fields
-        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
-        const filteredFields = Object.fromEntries(
-          Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
+        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted', 'hidden'];
+
+        // Remove excluded and blank fields
+        let filteredFields = Object.fromEntries(
+          Object.entries(updatedFields).filter(
+            ([key, val]) =>
+              !excludedFields.includes(key) && val !== '' && val !== null && val !== undefined
+          )
         );
 
-        // 🔄 Force the restaurantId to remain correct
+        // Always enforce restaurantId from path param
         filteredFields.restaurantId = restaurantId;
 
-        let result;
+        // If creating a new record, enforce at least restaurantId and date
+        if (!recordId) {
+          filteredFields = {
+            restaurantId,
+            date: updatedFields.date || new Date().toISOString().split('T')[0], // default to today
+          };
+        }
 
+        let result;
         if (!recordId) {
           // CREATE new record
           result = await base(config.tableName).create(filteredFields);
           console.log('[DEBUG] Created new reservation:', result.id);
         } else {
-          // (Optional) Fetch the record first to ensure it belongs to this restaurant
+          // Validate ownership of the record
           const existingRecord = await base(config.tableName).find(recordId);
           if (existingRecord.fields.restaurantId !== restaurantId) {
-            console.warn(`[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`);
-            results.push({ success: false, recordId, error: 'Record does not belong to this restaurant' });
+            console.warn(
+              `[WARN] Attempted to update a record that does not belong to restaurantId: ${restaurantId}`
+            );
+            results.push({
+              success: false,
+              recordId,
+              error: 'Record does not belong to this restaurant',
+            });
             continue;
           }
 
@@ -52,7 +70,11 @@ export async function updateReservations(restaurantId, updatesArray) {
 
         results.push({ success: true, id: result.id });
       } catch (err) {
-        console.error('[ERROR] Failed to update/create recordId:', recordId || '(new)', err.message);
+        console.error(
+          '[ERROR] Failed to update/create recordId:',
+          recordId || '(new)',
+          err.message
+        );
         results.push({ success: false, recordId, error: err.message });
       }
     }
