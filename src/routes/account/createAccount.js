@@ -59,6 +59,21 @@ export const createAccount = async (req, res) => {
     const createdId = created[0].id;
     console.log('[DEBUG] Created restaurantMap record (pending):', createdId);
 
+    // === NEW: Fetch the record to get the formula value ===
+    const createdRecord = await base('tblSrsq6Tw4YYMWk2').find(createdId);
+    const restaurantIdFormula = createdRecord.fields.restaurantIdFormula;
+    console.log('[DEBUG] Pulled restaurantIdFormula:', restaurantIdFormula);
+
+    // === NEW: Update restaurantId field with the formula value ===
+    if (restaurantIdFormula) {
+      await base('tblSrsq6Tw4YYMWk2').update([
+        { id: createdId, fields: { restaurantId: restaurantIdFormula } }
+      ]);
+      console.log('[DEBUG] Updated restaurantId to:', restaurantIdFormula);
+    } else {
+      console.warn('[WARN] restaurantIdFormula was empty, skipped updating restaurantId');
+    }
+
     return res.status(201).json({
       message: 'account_created',
       restaurantId: createdId,
