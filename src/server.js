@@ -22,6 +22,7 @@ import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
 import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
 import { createCheckoutSession } from './routes/stripe/createCheckoutSession.js'; // ✅ NEW: Stripe session creator
+import webhookRouter, { webhookHandler } from './routes/stripe/webhook.js'; // ✅ Import webhook handler for testing
 
 dotenv.config();
 
@@ -64,7 +65,21 @@ app.use('/api/auth/refresh', refreshRouter); // ✅ POST /refresh
 
 // Stripe
 app.post('/api/stripe/create-checkout-session', createCheckoutSession); // ✅ NEW: Stripe checkout route
+app.use('/api/stripe', webhookRouter); // ✅ Existing live webhook route
 
+// === NEW: Hoppscotch/Webhook testing route ===
+app.post('/api/test/webhook', async (req, res) => {
+  try {
+    const event = req.body; // Pass raw JSON from Hoppscotch
+    await webhookHandler(event); // Reuse same handler logic
+    res.status(200).json({ message: 'Test event processed', eventType: event.type });
+  } catch (err) {
+    console.error('[TEST WEBHOOK ERROR]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reservations
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
 app.post('/api/changeReservation/:restaurantId', changeReservation);
