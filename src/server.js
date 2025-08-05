@@ -21,6 +21,7 @@ import accountRouter from './routes/account/accountRouter.js';
 import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
 import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
+import { createCheckoutSession } from './routes/stripe/createCheckoutSession.js'; // ✅ NEW: Stripe session creator
 
 dotenv.config();
 
@@ -60,6 +61,9 @@ app.use('/api/account', accountRouter);
 app.use('/api/auth/login', loginRouter);     // ✅ POST /request
 app.use('/api/auth/verify', verifyRouter);   // ✅ POST /verify
 app.use('/api/auth/refresh', refreshRouter); // ✅ POST /refresh
+
+// Stripe
+app.post('/api/stripe/create-checkout-session', createCheckoutSession); // ✅ NEW: Stripe checkout route
 
 app.post('/api/reservation/:restaurantId', reservation);
 app.post('/api/cancelReservation/:restaurantId', cancelReservation);
