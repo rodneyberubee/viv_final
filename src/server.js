@@ -29,15 +29,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS config
+// CORS config (relaxed for testing)
 const allowedOrigins = [
   'http://localhost:3000',
   'https://vivaitable.com',
-  'https://hoppscotch.io',
-  'https://www.vivaitable.com'
+  'https://www.vivaitable.com',
+  'https://hoppscotch.io'
 ];
 const corsOptions = {
-  origin: function (origin, callback) {
+  origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -55,23 +55,30 @@ app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
 app.use(express.json());
 
+// === Debugging middleware to log all requests ===
+app.use((req, res, next) => {
+  console.log(`[DEBUG] ${req.method} ${req.url}`);
+  next();
+});
+
 // ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/account', accountRouter);
-app.use('/api/auth/login', loginRouter);     // ✅ POST /request
-app.use('/api/auth/verify', verifyRouter);   // ✅ POST /verify
-app.use('/api/auth/refresh', refreshRouter); // ✅ POST /refresh
+app.use('/api/auth/login', loginRouter);
+app.use('/api/auth/verify', verifyRouter);
+app.use('/api/auth/refresh', refreshRouter);
 
 // Stripe
-app.post('/api/stripe/create-checkout-session', createCheckoutSession); // ✅ NEW: Stripe checkout route
-app.use('/api/stripe', webhookRouter); // ✅ Existing live webhook route
+app.post('/api/stripe/create-checkout-session', createCheckoutSession);
+app.use('/api/stripe', webhookRouter);
 
-// === NEW: Hoppscotch/Webhook testing route ===
+// === NEW: Hoppscotch/Webhook testing route (explicit, no redirect) ===
 app.post('/api/test/webhook', async (req, res) => {
   try {
-    const event = req.body; // Pass raw JSON from Hoppscotch
-    await webhookHandler(event); // Reuse same handler logic
+    console.log('[TEST WEBHOOK] Body received:', req.body);
+    const event = req.body;
+    await webhookHandler(event);
     res.status(200).json({ message: 'Test event processed', eventType: event.type });
   } catch (err) {
     console.error('[TEST WEBHOOK ERROR]', err);
