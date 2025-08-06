@@ -3,7 +3,6 @@ import express from 'express';
 import Stripe from 'stripe';
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
-import { createReservationTable } from '../../helpers/createReservationTable.js';
 
 dotenv.config();
 const router = express.Router();
@@ -27,26 +26,12 @@ export const webhookHandler = async (event) => {
     try {
       const record = await base('restaurantMap').find(restaurantId);
 
-      // 1. Create a new reservations table for this restaurant
-      let newTableId;
-      try {
-        newTableId = await createReservationTable(
-          process.env.MASTER_BASE_ID,
-          `${restaurantId}_reservations`
-        );
-        console.log('[STRIPE WEBHOOK] Created new reservations table:', newTableId);
-      } catch (err) {
-        console.error('[STRIPE WEBHOOK] Failed to create reservations table:', err);
-        return;
-      }
-
-      // 2. Update restaurant record
+      // Update restaurant record to active
       await base('restaurantMap').update(record.id, {
         status: 'active',
         stripeCustomerId: session.customer || '',
         subscriptionId: session.subscription || '',
-        paymentDate: new Date().toISOString(),
-        tableId: newTableId
+        paymentDate: new Date().toISOString()
       });
       console.log('[STRIPE WEBHOOK] Updated account to active for:', restaurantId);
     } catch (airtableErr) {
@@ -70,6 +55,8 @@ export const webhookHandler = async (event) => {
           restaurantId: '' // Clear restaurantId to disable access but keep data
         });
         console.log('[STRIPE WEBHOOK] Marked account expired and cleared restaurantId for customer:', stripeCustomerId);
+      } else {
+        console.warn('[STRIPE WEBHOOK] No matching record found for customer:', stripeCustomerId);
       }
     } catch (err) {
       console.error('[STRIPE WEBHOOK] Failed to mark account expired:', err);
