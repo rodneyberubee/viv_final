@@ -21,8 +21,8 @@ import accountRouter from './routes/account/accountRouter.js';
 import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
 import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
-import { createCheckoutSession } from './routes/stripe/createCheckoutSession.js'; // ✅ NEW: Stripe session creator
-import webhookRouter, { webhookHandler } from './routes/stripe/webhook.js'; // ✅ Import webhook handler for testing
+import { createCheckoutSession } from './routes/paddle/createCheckoutSession.js'; // ✅ CHANGED: Paddle session creator
+import webhookRouter, { webhookHandler } from './routes/paddle/webhook.js'; // ✅ CHANGED: Paddle webhook handler
 
 dotenv.config();
 
@@ -69,9 +69,9 @@ app.use('/api/auth/login', loginRouter);
 app.use('/api/auth/verify', verifyRouter);
 app.use('/api/auth/refresh', refreshRouter);
 
-// Stripe
-app.post('/api/stripe/create-checkout-session', createCheckoutSession);
-app.use('/api/stripe', webhookRouter);
+// Paddle
+app.post('/api/paddle/create-checkout-session', createCheckoutSession);
+app.use('/api/paddle', webhookRouter);
 
 // === NEW: Hoppscotch/Webhook testing route (explicit, no redirect) ===
 app.post('/api/test/webhook', async (req, res) => {
