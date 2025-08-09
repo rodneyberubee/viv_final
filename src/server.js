@@ -21,10 +21,8 @@ import accountRouter from './routes/account/accountRouter.js';
 import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
 import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
-import { createCheckoutSession } from './routes/paddle/createCheckoutSession.js'; // ✅ CHANGED: Paddle session creator
-import webhookRouter, { webhookHandler } from './routes/paddle/webhook.js'; // ✅ CHANGED: Paddle webhook handler
-import { createStripeCheckoutSession } from './routes/stripe/createCheckoutSession.js'; // ✅ NEW: Stripe session creator
-import stripeWebhookRouter, { stripeWebhookHandler } from './routes/stripe/webhook.js'; // ✅ NEW: Stripe webhook handler
+import { createCheckoutSession, createStripeCheckoutSession } from './routes/webhook/createCheckoutSession.js'; // ✅ UPDATED: Combined session creators
+import webhookRouter, { webhookHandler, stripeWebhookHandler } from './routes/webhook/webhook.js'; // ✅ UPDATED: Combined webhook handlers
 
 dotenv.config();
 
@@ -71,13 +69,12 @@ app.use('/api/auth/login', loginRouter);
 app.use('/api/auth/verify', verifyRouter);
 app.use('/api/auth/refresh', refreshRouter);
 
-// Paddle
+// Payment providers (using separate endpoints for clarity)
 app.post('/api/paddle/create-checkout-session', createCheckoutSession);
-app.use('/api/paddle', webhookRouter);
-
-// Stripe
 app.post('/api/stripe/create-checkout-session', createStripeCheckoutSession);
-app.use('/api/stripe', stripeWebhookRouter);
+
+// Unified webhook endpoint (handles both Paddle and Stripe)
+app.use('/api/webhook', webhookRouter);
 
 // === NEW: Hoppscotch/Webhook testing route (explicit, no redirect) ===
 app.post('/api/test/webhook', async (req, res) => {
