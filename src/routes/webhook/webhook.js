@@ -189,4 +189,53 @@ router.post(
   }
 );
 
+// Quick probe: verify we can SELECT and UPDATE the row Airtable sees.
+router.get('/_probe/:restaurantId', async (req, res) => {
+  try {
+    const baseId = process.env.MASTER_BASE_ID;
+    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
+    const esc = (s='') => String(s).replace(/'/g, "\\'");
+    const restaurantId = req.params.restaurantId;
+
+    const formula = `{restaurantId} = '${esc(restaurantId)}'`;
+    const records = await base('restaurantMap').select({ filterByFormula: formula }).firstPage();
+
+    if (!records.length) {
+      return res.status(200).json({
+        ok: false,
+        reason: 'no_match',
+        baseIdLast6: baseId?.slice(-6),
+        table: 'restaurantMap',
+        field: 'restaurantId',
+        formula,
+        records: 0
+      });
+    }
+
+    const recId = records[0].id;
+
+    // Try a no-op-ish update to prove write perms.
+    const updated = await base('restaurantMap').update(recId, {
+      status: 'active',
+      stripeCustomerId: 'cus_probe',
+      subscriptionId: 'sub_probe',
+      paymentDate: new Date().toISOString()
+    });
+
+    return res.status(200).json({
+      ok: true,
+      baseIdLast6: baseId?.slice(-6),
+      recId,
+      wrote: {
+        status: updated.fields.status,
+        stripeCustomerId: updated.fields.stripeCustomerId,
+        subscriptionId: updated.fields.subscriptionId,
+        paymentDate: updated.fields.paymentDate
+      }
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, reason: 'error', message: e?.message, stack: e?.stack });
+  }
+});
+
 export default router;
