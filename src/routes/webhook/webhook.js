@@ -2,6 +2,7 @@
 import express from 'express';
 import Airtable from 'airtable';
 import dotenv from 'dotenv';
+import Stripe from 'stripe';
 
 dotenv.config();
 const router = express.Router();
@@ -96,6 +97,8 @@ export const stripeWebhookHandler = async (event) => {
       restaurantId,
       customer: session?.customer,
       subscription: session?.subscription,
+      mode: event.livemode ? 'live' : 'test',
+      eventId: event.id
     });
 
     if (!restaurantId) {
@@ -122,6 +125,8 @@ export const stripeWebhookHandler = async (event) => {
         stripeCustomerId: session?.customer || '',
         subscriptionId: session?.subscription || '',
         paymentDate: nowDateOnly,
+        env: event.livemode ? 'live' : 'test',
+        lastStripeEventId: event.id
       });
 
       console.log('[STRIPE] Activated account for:', restaurantId, 'recId:', records[0].id);
@@ -138,6 +143,8 @@ export const stripeWebhookHandler = async (event) => {
       baseIdLast6: baseId?.slice(-6),
       subscriptionId: subscription?.id,
       stripeCustomerId,
+      mode: event.livemode ? 'live' : 'test',
+      eventId: event.id
     });
 
     if (!stripeCustomerId) {
@@ -158,6 +165,8 @@ export const stripeWebhookHandler = async (event) => {
       await base(TABLE).update(records[0].id, {
         status: 'expired',
         restaurantId: '', // optional: disable access but keep data
+        env: event.livemode ? 'live' : 'test',
+        lastStripeEventId: event.id
       });
 
       console.log('[STRIPE] Marked expired for customer:', stripeCustomerId, 'recId:', records[0].id);
@@ -167,28 +176,62 @@ export const stripeWebhookHandler = async (event) => {
   }
 };
 
+// === NEW: verify Stripe event with either (live or test) secret ===
+const verifyStripeEvent = (rawBody, signature) => {
+  // Any key works for verification; use TEST or LIVE if TEST is absent
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-06-20'
+  });
+
+  const candidates = [
+    process.env.STRIPE_WEBHOOK_SECRET,        // live
+    process.env.STRIPE_WEBHOOK_SECRET_TEST,   // test
+  ].filter(Boolean);
+
+  for (const secret of candidates) {
+    try {
+      return stripe.webhooks.constructEvent(rawBody, signature, secret);
+    } catch (_) {}
+  }
+  return null;
+};
+
 // === Combined webhook endpoint that detects provider ===
+// Stripe requires the raw body for signature verification.
+// We still support Paddle by parsing raw to JSON ourselves when needed.
 router.post(
   '/webhook', // keep as-is to preserve /api/webhook/webhook
-  express.json(),
+  express.raw({ type: 'application/json' }),
   async (req, res) => {
     try {
-      const event = req.body;
+      const sig = req.headers['stripe-signature'];
 
-      if (event?.event_type) {
-        console.log('[WEBHOOK] Paddle event:', event.event_type);
-        await webhookHandler(event);
-      } else if (event?.type) {
-        console.log('[WEBHOOK] Stripe event:', event.type);
+      // If Stripe signature header exists, treat as Stripe
+      if (sig) {
+        const event = verifyStripeEvent(req.body, sig);
+        if (!event) {
+          console.warn('[WEBHOOK] Stripe signature verification failed');
+          return res.status(400).send('Invalid Stripe signature');
+        }
+        console.log('[WEBHOOK] Stripe event:', event.type, 'mode=', event.livemode ? 'live' : 'test');
         await stripeWebhookHandler(event);
-      } else {
-        console.warn('[WEBHOOK] Unknown webhook format received');
+        return res.status(200).json({ message: 'Stripe webhook processed' });
       }
 
-      res.status(200).json({ message: 'Webhook processed successfully' });
+      // Otherwise, try to parse as Paddle JSON
+      const text = req.body?.toString?.('utf8') || '';
+      const parsed = text ? JSON.parse(text) : {};
+      if (parsed?.event_type) {
+        console.log('[WEBHOOK] Paddle event:', parsed.event_type);
+        await webhookHandler(parsed);
+        return res.status(200).json({ message: 'Paddle webhook processed' });
+      }
+
+      console.warn('[WEBHOOK] Unknown webhook format received');
+      return res.status(200).json({ message: 'No-op' });
     } catch (err) {
       console.error('[WEBHOOK] Processing failed:', err?.message || err);
-      res.status(500).json({ error: 'Webhook processing failed' });
+      return res.status(500).json({ error: 'Webhook processing failed' });
     }
   }
 );
