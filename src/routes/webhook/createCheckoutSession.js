@@ -66,28 +66,45 @@ export const createCheckoutSession = async (req, res) => {
 // === Stripe checkout session handler ===
 export const createStripeCheckoutSession = async (req, res) => {
   try {
-    const { restaurantId, email } = req.body;
+    const { restaurantId, email, mode } = req.body;
 
     if (!restaurantId || !email) {
       console.error('[ERROR] Missing restaurantId or email for checkout session');
       return res.status(400).json({ error: 'missing_required_fields' });
     }
 
-    if (!process.env.STRIPE_SUBSCRIPTION_PRICE_ID) {
-      console.error('[ENV ERROR] STRIPE_SUBSCRIPTION_PRICE_ID not set');
-      return res.status(500).json({ error: 'server_config_error' });
+    // Decide which Stripe lane to use
+    const resolvedMode = (mode || process.env.MODE || 'live').toLowerCase();
+    const isLive = resolvedMode === 'live';
+
+    const stripeSecretKey = isLive
+      ? process.env.STRIPE_SECRET_KEY
+      : process.env.STRIPE_SECRET_KEY_TEST;
+
+    const stripePriceId = isLive
+      ? process.env.STRIPE_SUBSCRIPTION_PRICE_ID
+      : process.env.STRIPE_SUBSCRIPTION_PRICE_ID_TEST;
+
+    if (!stripeSecretKey) {
+      console.error(`[ENV ERROR] Missing ${isLive ? 'STRIPE_SECRET_KEY' : 'STRIPE_SECRET_KEY_TEST'}`);
+      return res.status(500).json({ error: 'server_config_error', details: 'missing_stripe_secret' });
+    }
+
+    if (!stripePriceId) {
+      console.error(`[ENV ERROR] Missing ${isLive ? 'STRIPE_SUBSCRIPTION_PRICE_ID' : 'STRIPE_SUBSCRIPTION_PRICE_ID_TEST'}`);
+      return res.status(500).json({ error: 'server_config_error', details: 'missing_stripe_price' });
     }
 
     // Create the checkout session
     const stripeResponse = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+        'Authorization': `Bearer ${stripeSecretKey}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
         'mode': 'subscription',
-        'line_items[0][price]': process.env.STRIPE_SUBSCRIPTION_PRICE_ID,
+        'line_items[0][price]': stripePriceId,
         'line_items[0][quantity]': '1',
         'customer_email': email,
         'metadata[restaurantId]': restaurantId,
@@ -102,7 +119,7 @@ export const createStripeCheckoutSession = async (req, res) => {
       throw new Error(`Stripe API error: ${JSON.stringify(stripeData)}`);
     }
 
-    console.log('[STRIPE] Checkout session created for restaurant:', restaurantId);
+    console.log(`[STRIPE] Checkout session created for restaurant: ${restaurantId} in ${isLive ? 'LIVE' : 'TEST'} mode`);
 
     return res.status(200).json({ url: stripeData.url });
   } catch (error) {
