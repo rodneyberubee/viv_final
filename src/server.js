@@ -46,20 +46,25 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature'], // ← add signature header
   credentials: true
 };
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
-app.use(express.json());
+
+// ✅ Mount the webhook BEFORE global JSON, using RAW body for Stripe verification
+app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRouter);
 
 // === Debugging middleware to log all requests ===
 app.use((req, res, next) => {
   console.log(`[DEBUG] ${req.method} ${req.url}`);
   next();
 });
+
+// Now parse JSON for the rest of the app
+app.use(express.json());
 
 // ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
@@ -73,24 +78,16 @@ app.use('/api/auth/refresh', refreshRouter);
 app.post('/api/paddle/create-checkout-session', createCheckoutSession);
 app.post('/api/stripe/create-checkout-session', createStripeCheckoutSession);
 
-// Unified webhook endpoint (handles both Paddle and Stripe)
-app.use('/api/webhook', webhookRouter);
-
-// === NEW: Hoppscotch/Webhook testing route (explicit, no redirect) ===
+// === Hoppscotch/Webhook testing route (uses JSON body) ===
 app.post('/api/test/webhook', async (req, res) => {
   try {
     console.log('[TEST WEBHOOK] Body received:', req.body);
     const event = req.body;
-    
-    // Detect provider and route accordingly
     if (event.event_type) {
-      // Paddle webhook (has event_type)
-      await webhookHandler(event);
+      await webhookHandler(event); // Paddle
     } else if (event.type) {
-      // Stripe webhook (has type)
-      await stripeWebhookHandler(event);
+      await stripeWebhookHandler(event); // Stripe
     }
-    
     res.status(200).json({ message: 'Test event processed', eventType: event.type || event.event_type });
   } catch (err) {
     console.error('[TEST WEBHOOK ERROR]', err);
