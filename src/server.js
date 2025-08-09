@@ -23,6 +23,8 @@ import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
 import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
 import { createCheckoutSession } from './routes/paddle/createCheckoutSession.js'; // ✅ CHANGED: Paddle session creator
 import webhookRouter, { webhookHandler } from './routes/paddle/webhook.js'; // ✅ CHANGED: Paddle webhook handler
+import { createStripeCheckoutSession } from './routes/stripe/createCheckoutSession.js'; // ✅ NEW: Stripe session creator
+import stripeWebhookRouter, { stripeWebhookHandler } from './routes/stripe/webhook.js'; // ✅ NEW: Stripe webhook handler
 
 dotenv.config();
 
@@ -73,13 +75,26 @@ app.use('/api/auth/refresh', refreshRouter);
 app.post('/api/paddle/create-checkout-session', createCheckoutSession);
 app.use('/api/paddle', webhookRouter);
 
+// Stripe
+app.post('/api/stripe/create-checkout-session', createStripeCheckoutSession);
+app.use('/api/stripe', stripeWebhookRouter);
+
 // === NEW: Hoppscotch/Webhook testing route (explicit, no redirect) ===
 app.post('/api/test/webhook', async (req, res) => {
   try {
     console.log('[TEST WEBHOOK] Body received:', req.body);
     const event = req.body;
-    await webhookHandler(event);
-    res.status(200).json({ message: 'Test event processed', eventType: event.type });
+    
+    // Detect provider and route accordingly
+    if (event.event_type) {
+      // Paddle webhook (has event_type)
+      await webhookHandler(event);
+    } else if (event.type) {
+      // Stripe webhook (has type)
+      await stripeWebhookHandler(event);
+    }
+    
+    res.status(200).json({ message: 'Test event processed', eventType: event.type || event.event_type });
   } catch (err) {
     console.error('[TEST WEBHOOK ERROR]', err);
     res.status(500).json({ error: err.message });
