@@ -29,6 +29,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+console.log(`[BOOT] MODE=${process.env.MODE || 'live'}`);
+
 // CORS config (relaxed for testing)
 const allowedOrigins = [
   'http://localhost:3000',
@@ -46,7 +48,8 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature'], // ← add signature header
+  // Allow both header casings to make preflights happy
+  allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature', 'stripe-signature'],
   credentials: true
 };
 
@@ -54,8 +57,9 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
 
-// ✅ Mount the webhook BEFORE global JSON, using RAW body for Stripe verification
-app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRouter);
+// ✅ Mount the webhook BEFORE global JSON.
+// NOTE: Do NOT add express.raw here because the router already applies it.
+app.use('/api/webhook', webhookRouter);
 
 // === Debugging middleware to log all requests ===
 app.use((req, res, next) => {
