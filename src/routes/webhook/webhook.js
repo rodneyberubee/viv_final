@@ -39,11 +39,13 @@ export const webhookHandler = async (event) => {
         return;
       }
 
+      const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
       await base(TABLE).update(records[0].id, {
         status: 'active',
         paddleCustomerId: subscription?.customer_id || '',
         subscriptionId: subscription?.id || '',
-        paymentDate: new Date().toISOString(),
+        paymentDate: nowDateOnly,
       });
 
       console.log('[PADDLE] Activated for restaurantId:', restaurantId, 'recId:', records[0].id);
@@ -113,11 +115,13 @@ export const stripeWebhookHandler = async (event) => {
         return;
       }
 
+      const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
       await base(TABLE).update(records[0].id, {
         status: 'active',
         stripeCustomerId: session?.customer || '',
         subscriptionId: session?.subscription || '',
-        paymentDate: new Date().toISOString(),
+        paymentDate: nowDateOnly,
       });
 
       console.log('[STRIPE] Activated account for:', restaurantId, 'recId:', records[0].id);
@@ -194,18 +198,18 @@ router.get('/_probe/:restaurantId', async (req, res) => {
   try {
     const baseId = process.env.MASTER_BASE_ID;
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(baseId);
-    const esc = (s='') => String(s).replace(/'/g, "\\'");
+    const escLocal = (s='') => String(s).replace(/'/g, "\\'");
     const restaurantId = req.params.restaurantId;
 
-    const formula = `{restaurantId} = '${esc(restaurantId)}'`;
-    const records = await base('restaurantMap').select({ filterByFormula: formula }).firstPage();
+    const formula = `{restaurantId} = '${escLocal(restaurantId)}'`;
+    const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
 
     if (!records.length) {
       return res.status(200).json({
         ok: false,
         reason: 'no_match',
         baseIdLast6: baseId?.slice(-6),
-        table: 'restaurantMap',
+        table: TABLE,
         field: 'restaurantId',
         formula,
         records: 0
@@ -213,13 +217,14 @@ router.get('/_probe/:restaurantId', async (req, res) => {
     }
 
     const recId = records[0].id;
+    const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
     // Try a no-op-ish update to prove write perms.
-    const updated = await base('restaurantMap').update(recId, {
+    const updated = await base(TABLE).update(recId, {
       status: 'active',
       stripeCustomerId: 'cus_probe',
       subscriptionId: 'sub_probe',
-      paymentDate: new Date().toISOString()
+      paymentDate: nowDateOnly
     });
 
     return res.status(200).json({
