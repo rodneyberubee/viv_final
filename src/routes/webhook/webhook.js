@@ -78,8 +78,21 @@ export const stripeWebhookHandler = async (event) => {
     }
 
     try {
-      const record = await base('restaurantMap').find(restaurantId);
+      const records = await base('restaurantMap')
+        .select({ filterByFormula: `{restaurantId} = '${restaurantId}'` })
+        .firstPage();
 
+      if (!records.length) {
+        console.warn('[STRIPE WEBHOOK] No record for restaurantId:', restaurantId);
+        return;
+      }
+
+      await base('restaurantMap').update(records[0].id, {
+        status: 'active',
+        stripeCustomerId: session.customer || '',
+        subscriptionId: session.subscription || '',
+        paymentDate: new Date().toISOString()
+      });
       // Update restaurant record to active
       await base('restaurantMap').update(record.id, {
         status: 'active',
