@@ -21,35 +21,46 @@ export const webhookHandler = async (event) => {
 
   if (event?.event_type === 'subscription.created') {
     const subscription = event.data;
-    console.log('[PADDLE] subscription.created', { subId: subscription?.id });
+    const recId = subscription?.custom_data?.airtableRecordId;        // ✅ prefer recordId
+    const restaurantId = subscription?.custom_data?.restaurantId;      // fallback (legacy)
 
-    const restaurantId = subscription?.custom_data?.restaurantId;
-    if (!restaurantId) {
-      console.warn('[PADDLE] Missing restaurantId in custom_data');
-      return;
-    }
+    console.log('[PADDLE] subscription.created', {
+      subId: subscription?.id,
+      recId,
+      restaurantIdFallback: !!restaurantId
+    });
 
     try {
-      // Look up by field value, not record ID
-      const formula = `{restaurantId} = '${esc(restaurantId)}'`;
-      const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
-      console.log('[PADDLE] select length:', records.length);
+      let rec = null;
 
-      if (!records.length) {
-        console.warn('[PADDLE] No record for restaurantId:', restaurantId);
+      if (recId && /^rec[a-zA-Z0-9]{14,}$/.test(recId)) {
+        // ✅ direct fetch by recordId
+        rec = await base(TABLE).find(recId);
+      } else if (restaurantId) {
+        // legacy fallback by field
+        const formula = `{restaurantId} = '${esc(restaurantId)}'`;
+        const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
+        rec = records[0];
+      } else {
+        console.warn('[PADDLE] Missing airtableRecordId/restaurantId in custom_data');
         return;
       }
 
-      const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      if (!rec) {
+        console.warn('[PADDLE] No Airtable record found.');
+        return;
+      }
 
-      await base(TABLE).update(records[0].id, {
+      const nowDateOnly = new Date().toISOString().slice(0, 10);
+
+      await base(TABLE).update(rec.id, {
         status: 'active',
         paddleCustomerId: subscription?.customer_id || '',
         subscriptionId: subscription?.id || '',
         paymentDate: nowDateOnly,
       });
 
-      console.log('[PADDLE] Activated for restaurantId:', restaurantId, 'recId:', records[0].id);
+      console.log('[PADDLE] Activated recId:', rec.id);
     } catch (err) {
       console.error('[PADDLE] Airtable update error:', err);
     }
@@ -57,25 +68,33 @@ export const webhookHandler = async (event) => {
 
   if (event?.event_type === 'subscription.cancelled') {
     const subscription = event.data;
+    const recId = subscription?.custom_data?.airtableRecordId;        // ✅ prefer recordId
     const paddleCustomerId = subscription?.customer_id;
-    console.log('[PADDLE] subscription.cancelled', { paddleCustomerId });
+
+    console.log('[PADDLE] subscription.cancelled', { recId, paddleCustomerId });
 
     try {
-      const formula = `{paddleCustomerId} = '${esc(paddleCustomerId)}'`;
-      const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
-      console.log('[PADDLE] select (cancel) length:', records.length);
+      let rec = null;
 
-      if (!records.length) {
-        console.warn('[PADDLE] No matching record for customer:', paddleCustomerId);
+      if (recId && /^rec[a-zA-Z0-9]{14,}$/.test(recId)) {
+        rec = await base(TABLE).find(recId);
+      } else if (paddleCustomerId) {
+        const formula = `{paddleCustomerId} = '${esc(paddleCustomerId)}'`;
+        const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
+        rec = records[0];
+      }
+
+      if (!rec) {
+        console.warn('[PADDLE] No matching record for cancellation.');
         return;
       }
 
-      await base(TABLE).update(records[0].id, {
+      await base(TABLE).update(rec.id, {
         status: 'expired',
-        restaurantId: '', // disable access but keep data
+        restaurantId: '', // optional: disable access but keep data
       });
 
-      console.log('[PADDLE] Marked expired & cleared restaurantId for customer:', paddleCustomerId);
+      console.log('[PADDLE] Marked expired recId:', rec.id);
     } catch (err) {
       console.error('[PADDLE] Airtable expire error:', err);
     }
@@ -89,38 +108,45 @@ export const stripeWebhookHandler = async (event) => {
 
   if (event?.type === 'checkout.session.completed') {
     const session = event?.data?.object;
-    const restaurantId = session?.metadata?.restaurantId;
+    const md = session?.metadata || {};
+    const recId = md.airtableRecordId;                       // ✅ preferred
+    const restaurantId = md.restaurantId;                    // legacy fallback
 
     console.log('[STRIPE] checkout.session.completed', {
       baseIdLast6: baseId?.slice(-6),
       sessionId: session?.id,
-      restaurantId,
+      recId,
+      restaurantIdFallback: restaurantId,
       customer: session?.customer,
       subscription: session?.subscription,
       mode: event.livemode ? 'live' : 'test',
       eventId: event.id
     });
 
-    if (!restaurantId) {
-      console.warn('[STRIPE] Missing restaurantId in metadata');
-      return;
-    }
-
     try {
-      // Look up by restaurantId field
-      const formula = `{restaurantId} = '${esc(restaurantId)}'`;
-      console.log('[STRIPE] select formula:', formula);
-      const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
-      console.log('[STRIPE] records length:', records.length, records.map(r => r.id));
+      let rec = null;
 
-      if (!records.length) {
-        console.warn('[STRIPE] No record for restaurantId:', restaurantId);
+      if (recId && /^rec[a-zA-Z0-9]{14,}$/.test(recId)) {
+        // ✅ direct fetch by recordId
+        rec = await base(TABLE).find(recId);
+      } else if (restaurantId) {
+        // legacy fallback by field
+        const formula = `{restaurantId} = '${esc(restaurantId)}'`;
+        const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
+        rec = records[0];
+      } else {
+        console.warn('[STRIPE] Missing airtableRecordId/restaurantId in metadata');
         return;
       }
 
-      const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      if (!rec) {
+        console.warn('[STRIPE] No Airtable record found for session.');
+        return;
+      }
 
-      await base(TABLE).update(records[0].id, {
+      const nowDateOnly = new Date().toISOString().slice(0, 10);
+
+      await base(TABLE).update(rec.id, {
         status: 'active',
         stripeCustomerId: session?.customer || '',
         subscriptionId: session?.subscription || '',
@@ -129,7 +155,7 @@ export const stripeWebhookHandler = async (event) => {
         lastStripeEventId: event.id
       });
 
-      console.log('[STRIPE] Activated account for:', restaurantId, 'recId:', records[0].id);
+      console.log('[STRIPE] Activated recId:', rec.id);
     } catch (err) {
       console.error('[STRIPE] Airtable update error:', err);
     }
@@ -137,39 +163,44 @@ export const stripeWebhookHandler = async (event) => {
 
   if (event?.type === 'customer.subscription.deleted') {
     const subscription = event?.data?.object;
-    const stripeCustomerId = subscription?.customer;
+    const mdSub = subscription?.metadata || {};
+    const recIdFromMd = mdSub.airtableRecordId;              // ✅ preferred
+    const stripeCustomerId = subscription?.customer;          // fallback
 
     console.log('[STRIPE] customer.subscription.deleted', {
       baseIdLast6: baseId?.slice(-6),
       subscriptionId: subscription?.id,
+      recIdFromMd,
       stripeCustomerId,
       mode: event.livemode ? 'live' : 'test',
       eventId: event.id
     });
 
-    if (!stripeCustomerId) {
-      console.warn('[STRIPE] Missing stripeCustomerId on deletion event');
-      return;
-    }
-
     try {
-      const formula = `{stripeCustomerId} = '${esc(stripeCustomerId)}'`;
-      const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
-      console.log('[STRIPE] records length (delete):', records.length, records.map(r => r.id));
+      let rec = null;
 
-      if (!records.length) {
-        console.warn('[STRIPE] No record for stripeCustomerId:', stripeCustomerId);
+      if (recIdFromMd && /^rec[a-zA-Z0-9]{14,}$/.test(recIdFromMd)) {
+        rec = await base(TABLE).find(recIdFromMd);
+      } else if (stripeCustomerId) {
+        // legacy fallback by customer id field
+        const formula = `{stripeCustomerId} = '${esc(stripeCustomerId)}'`;
+        const records = await base(TABLE).select({ filterByFormula: formula }).firstPage();
+        rec = records[0];
+      }
+
+      if (!rec) {
+        console.warn('[STRIPE] No record found for subscription deletion.');
         return;
       }
 
-      await base(TABLE).update(records[0].id, {
+      await base(TABLE).update(rec.id, {
         status: 'expired',
-        restaurantId: '', // optional: disable access but keep data
+        restaurantId: '', // optional
         env: event.livemode ? 'live' : 'test',
         lastStripeEventId: event.id
       });
 
-      console.log('[STRIPE] Marked expired for customer:', stripeCustomerId, 'recId:', records[0].id);
+      console.log('[STRIPE] Marked expired recId:', rec.id);
     } catch (err) {
       console.error('[STRIPE] Airtable expire error:', err);
     }
@@ -178,7 +209,6 @@ export const stripeWebhookHandler = async (event) => {
 
 // === NEW: verify Stripe event with either (live or test) secret ===
 const verifyStripeEvent = (rawBody, signature) => {
-  // Any key works for verification; use TEST or LIVE if TEST is absent
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY_TEST || process.env.STRIPE_SECRET_KEY, {
     apiVersion: '2024-06-20'
   });
@@ -197,8 +227,6 @@ const verifyStripeEvent = (rawBody, signature) => {
 };
 
 // === Combined webhook endpoint that detects provider ===
-// Stripe requires the raw body for signature verification.
-// We still support Paddle by parsing raw to JSON ourselves when needed.
 router.post(
   '/', // ✅ final path becomes /api/webhook (no double /webhook)
   express.raw({ type: 'application/json' }),
@@ -236,7 +264,7 @@ router.post(
   }
 );
 
-// Quick probe: verify we can SELECT and UPDATE the row Airtable sees.
+// Quick probe remains legacy-by-field; keep as-is or add an id-based variant if you want.
 router.get('/_probe/:restaurantId', async (req, res) => {
   try {
     const baseId = process.env.MASTER_BASE_ID;
@@ -260,9 +288,8 @@ router.get('/_probe/:restaurantId', async (req, res) => {
     }
 
     const recId = records[0].id;
-    const nowDateOnly = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const nowDateOnly = new Date().toISOString().slice(0, 10);
 
-    // Try a no-op-ish update to prove write perms.
     const updated = await base(TABLE).update(recId, {
       status: 'active',
       stripeCustomerId: 'cus_probe',
