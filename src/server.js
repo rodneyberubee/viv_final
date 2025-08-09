@@ -18,11 +18,11 @@ import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
 import accountRouter from './routes/account/accountRouter.js';
-import loginRouter from './routes/auth/login.js';    // ✅ Handles /request
-import verifyRouter from './routes/auth/verify.js';  // ✅ Handles /verify
-import refreshRouter from './routes/auth/refresh.js'; // ✅ NEW: Handles /refresh
-import { createCheckoutSession, createStripeCheckoutSession } from './routes/webhook/createCheckoutSession.js'; // ✅ UPDATED: Combined session creators
-import webhookRouter, { webhookHandler, stripeWebhookHandler } from './routes/webhook/webhook.js'; // ✅ UPDATED: Combined webhook handlers
+import loginRouter from './routes/auth/login.js';     // ✅ Handles /request
+import verifyRouter from './routes/auth/verify.js';   // ✅ Handles /verify
+import refreshRouter from './routes/auth/refresh.js'; // ✅ Handles /refresh
+import { createCheckoutSession, createStripeCheckoutSession } from './routes/webhook/createCheckoutSession.js'; // ✅ Combined session creators
+import webhookRouter, { webhookHandler, stripeWebhookHandler } from './routes/webhook/webhook.js'; // ✅ Combined webhook handlers
 
 dotenv.config();
 
@@ -30,6 +30,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 console.log(`[BOOT] MODE=${process.env.MODE || 'live'}`);
+console.log('[BOOT] Canonical Stripe/Paddle webhook URL: /api/webhook');
 
 // CORS config (relaxed for testing)
 const allowedOrigins = [
@@ -57,9 +58,18 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(morgan('dev'));
 
-// ✅ Mount the webhook BEFORE global JSON.
-// NOTE: Do NOT add express.raw here because the router already applies it.
+/**
+ * ✅ Mount the webhook BEFORE global JSON.
+ * NOTE: Do NOT add express.raw here because the router already applies it.
+ * Ensure routes/webhook/webhook.js uses `router.post('/')` (not '/webhook')
+ * so the final path is exactly `/api/webhook`.
+ */
 app.use('/api/webhook', webhookRouter);
+
+// Optional: lightweight health check for the webhook path (no body parsing)
+app.get('/api/webhook', (req, res) => {
+  res.status(200).send('Webhook endpoint is up');
+});
 
 // === Debugging middleware to log all requests ===
 app.use((req, res, next) => {
