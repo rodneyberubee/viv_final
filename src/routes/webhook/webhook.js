@@ -200,7 +200,7 @@ const verifyStripeEvent = (rawBody, signature) => {
 // Stripe requires the raw body for signature verification.
 // We still support Paddle by parsing raw to JSON ourselves when needed.
 router.post(
-  '/webhook', // keep as-is to preserve /api/webhook/webhook
+  '/', // ✅ final path becomes /api/webhook (no double /webhook)
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     try {
