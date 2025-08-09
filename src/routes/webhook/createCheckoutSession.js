@@ -17,6 +17,10 @@ export const createCheckoutSession = async (req, res) => {
       console.error('[ENV ERROR] PADDLE_SUBSCRIPTION_PRICE_ID not set');
       return res.status(500).json({ error: 'server_config_error' });
     }
+    if (!process.env.FRONTEND_URL) {
+      console.error('[ENV ERROR] FRONTEND_URL not set');
+      return res.status(500).json({ error: 'server_config_error' });
+    }
 
     // Create the checkout session
     const paddleResponse = await fetch('https://api.paddle.com/transactions', {
@@ -27,17 +31,10 @@ export const createCheckoutSession = async (req, res) => {
       },
       body: JSON.stringify({
         items: [
-          {
-            price_id: process.env.PADDLE_SUBSCRIPTION_PRICE_ID,
-            quantity: 1,
-          },
+          { price_id: process.env.PADDLE_SUBSCRIPTION_PRICE_ID, quantity: 1 },
         ],
-        customer: {
-          email: email,
-        },
-        custom_data: {
-          restaurantId: restaurantId,
-        },
+        customer: { email },
+        custom_data: { restaurantId },
         checkout: {
           url: `${process.env.FRONTEND_URL}/onboarding/success`,
         },
@@ -51,12 +48,12 @@ export const createCheckoutSession = async (req, res) => {
     const paddleData = await paddleResponse.json();
 
     if (!paddleResponse.ok) {
-      throw new Error(`Paddle API error: ${JSON.stringify(paddleData)}`);
+      console.error('[PADDLE] API error body:', paddleData);
+      throw new Error(`Paddle API error: ${paddleResponse.status}`);
     }
 
     console.log('[PADDLE] Checkout session created for restaurant:', restaurantId);
-
-    return res.status(200).json({ url: paddleData.data.checkout.url });
+    return res.status(200).json({ url: paddleData?.data?.checkout?.url });
   } catch (error) {
     console.error('[PADDLE] Failed to create checkout session:', error);
     return res.status(500).json({ error: 'failed_to_create_session', details: error.message });
@@ -76,6 +73,7 @@ export const createStripeCheckoutSession = async (req, res) => {
     // Decide which Stripe lane to use
     const resolvedMode = (mode || process.env.MODE || 'live').toLowerCase();
     const isLive = resolvedMode === 'live';
+    console.log(`[STRIPE] create-checkout-session resolvedMode=${resolvedMode}`);
 
     const stripeSecretKey = isLive
       ? process.env.STRIPE_SECRET_KEY
@@ -95,32 +93,47 @@ export const createStripeCheckoutSession = async (req, res) => {
       return res.status(500).json({ error: 'server_config_error', details: 'missing_stripe_price' });
     }
 
+    if (!process.env.FRONTEND_URL) {
+      console.error('[ENV ERROR] FRONTEND_URL not set');
+      return res.status(500).json({ error: 'server_config_error', details: 'missing_frontend_url' });
+    }
+
     // Create the checkout session
+    const params = new URLSearchParams({
+      'mode': 'subscription',
+      'line_items[0][price]': stripePriceId,
+      'line_items[0][quantity]': '1',
+      'customer_email': email,
+
+      // Your join keys
+      'metadata[restaurantId]': restaurantId,
+      'client_reference_id': restaurantId, // extra pointer in UI/webhooks
+
+      // Ensure subscription events also carry restaurantId
+      'subscription_data[metadata][restaurantId]': restaurantId,
+
+      'success_url': `${process.env.FRONTEND_URL}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+      'cancel_url': `${process.env.FRONTEND_URL}/onboarding/cancelled`,
+      // You can add: 'allow_promotion_codes': 'true'  // optional
+    });
+
     const stripeResponse = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${stripeSecretKey}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        'mode': 'subscription',
-        'line_items[0][price]': stripePriceId,
-        'line_items[0][quantity]': '1',
-        'customer_email': email,
-        'metadata[restaurantId]': restaurantId,
-        'success_url': `${process.env.FRONTEND_URL}/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-        'cancel_url': `${process.env.FRONTEND_URL}/onboarding/cancelled`,
-      }),
+      body: params,
     });
 
     const stripeData = await stripeResponse.json();
 
     if (!stripeResponse.ok) {
-      throw new Error(`Stripe API error: ${JSON.stringify(stripeData)}`);
+      console.error('[STRIPE] API error body:', stripeData);
+      throw new Error(`Stripe API error: ${stripeResponse.status}`);
     }
 
     console.log(`[STRIPE] Checkout session created for restaurant: ${restaurantId} in ${isLive ? 'LIVE' : 'TEST'} mode`);
-
     return res.status(200).json({ url: stripeData.url });
   } catch (error) {
     console.error('[STRIPE] Failed to create checkout session:', error);
