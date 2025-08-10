@@ -3,30 +3,17 @@ import { getReservations } from '../../utils/dashboard/getReservations.js';
 import { updateReservations } from '../../utils/dashboard/updateReservations.js';
 import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
 import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
-import { requireAuth } from '../../../middleware/requireAuth.js'; // ✅ Auth middleware
+import { requireAuth } from '../../../middleware/requireAuth.js';
 import { DateTime } from 'luxon';
 
 export const dashboardRouter = express.Router();
 
-// In-memory store for refresh flags
 const refreshFlags = {}; // { restaurantId: 0 or 1 }
-
-// Helper to set refresh flag (can be called by other modules)
 export const setRefreshFlag = (restaurantId) => {
   refreshFlags[restaurantId] = 1;
   console.log(`[DEBUG] Refresh flag set for ${restaurantId}`);
 };
 
-// ✅ Protect all dashboard routes except mollyscafe1 (public demo)
-dashboardRouter.use((req, res, next) => {
-  if (req.params.restaurantId === 'mollyscafe1') {
-    console.log('[AUTH] Public demo access granted for mollyscafe1');
-    return next();
-  }
-  return requireAuth(req, res, next);
-});
-
-// Helper to enforce restaurantId match
 const enforceRestaurantAccess = (req, res) => {
   const { restaurantId } = req.params;
   if (!restaurantId) {
@@ -34,8 +21,7 @@ const enforceRestaurantAccess = (req, res) => {
     return null;
   }
   if (restaurantId === 'mollyscafe1') {
-    // Public demo — no user check
-    return restaurantId;
+    return restaurantId; // public demo
   }
   if (req.user?.restaurantId !== restaurantId) {
     console.warn(`[AUTH] Forbidden access attempt by ${req.user?.email || 'unknown'} for ${restaurantId}`);
@@ -45,7 +31,6 @@ const enforceRestaurantAccess = (req, res) => {
   return restaurantId;
 };
 
-// Normalize time input to 24-hour HH:mm
 const normalizeTime = (value) => {
   if (!value || typeof value !== 'string') return null;
   let dt = DateTime.fromFormat(value.trim(), 'H:mm');
@@ -54,12 +39,19 @@ const normalizeTime = (value) => {
   return dt.toFormat('HH:mm');
 };
 
-// ✅ GET /api/dashboard/:restaurantId/reservations
-dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter GET /reservations called');
+// Middleware for per-route auth
+const authIfNotPublic = async (req, res, next) => {
+  if (req.params.restaurantId === 'mollyscafe1') {
+    console.log('[AUTH] Public demo access granted for mollyscafe1');
+    return next();
+  }
+  return requireAuth(req, res, next);
+};
+
+// GET reservations
+dashboardRouter.get('/:restaurantId/reservations', authIfNotPublic, async (req, res) => {
   const restaurantId = enforceRestaurantAccess(req, res);
   if (!restaurantId) return;
-
   try {
     const reservations = await getReservations(restaurantId);
     res.setHeader('Content-Type', 'application/json');
@@ -70,20 +62,17 @@ dashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
   }
 });
 
-// ✅ POST /api/dashboard/:restaurantId/updateReservation
-dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter POST /updateReservation called');
+// POST updateReservation
+dashboardRouter.post('/:restaurantId/updateReservation', authIfNotPublic, async (req, res) => {
   const restaurantId = enforceRestaurantAccess(req, res);
   if (!restaurantId) return;
-
   const updates = req.body;
   if (!updates || !Array.isArray(updates)) {
     return res.status(400).json({ error: 'Invalid or missing update data' });
   }
-
   try {
     const result = await updateReservations(restaurantId, updates);
-    setRefreshFlag(restaurantId); // <-- Trigger refresh flag
+    setRefreshFlag(restaurantId);
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result });
   } catch (err) {
@@ -92,17 +81,13 @@ dashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
   }
 });
 
-// ✅ GET /api/dashboard/:restaurantId/config
-dashboardRouter.get('/:restaurantId/config', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter GET /config called');
+// GET config
+dashboardRouter.get('/:restaurantId/config', authIfNotPublic, async (req, res) => {
   const restaurantId = enforceRestaurantAccess(req, res);
   if (!restaurantId) return;
-
   try {
     const config = await dashboardConfig(restaurantId);
-    if (!config) {
-      return res.status(404).json({ error: 'Config not found' });
-    }
+    if (!config) return res.status(404).json({ error: 'Config not found' });
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ config, user: req.user });
   } catch (err) {
@@ -111,24 +96,17 @@ dashboardRouter.get('/:restaurantId/config', async (req, res) => {
   }
 });
 
-// ✅ POST /api/dashboard/:restaurantId/updateConfig
-dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter POST /updateConfig called');
+// POST updateConfig
+dashboardRouter.post('/:restaurantId/updateConfig', authIfNotPublic, async (req, res) => {
   const restaurantId = enforceRestaurantAccess(req, res);
   if (!restaurantId) return;
-
   const updates = req.body;
-
   try {
     const base = getAirtableBase(process.env.MASTER_BASE_ID);
     const formula = `{restaurantId} = "${restaurantId}"`;
-
     const records = await base('restaurantMap').select({ filterByFormula: formula }).firstPage();
-    if (!records.length) {
-      return res.status(404).json({ error: 'No matching config found' });
-    }
+    if (!records.length) return res.status(404).json({ error: 'No matching config found' });
 
-    // Only allow editable Airtable fields (exclude computed fields like slug, restaurantIdFormula, calibratedTime)
     const allowedFields = [
       'baseId', 'tableName', 'maxReservations', 'cutoffTime', 'futureCutoff',
       'name', 'timeZone',
@@ -137,8 +115,6 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
       'fridayOpen', 'fridayClose', 'saturdayOpen', 'saturdayClose',
       'sundayOpen', 'sundayClose'
     ];
-
-    // Numeric fields that need type coercion
     const numericFields = ['maxReservations', 'futureCutoff', 'cutoffTime'];
     const timeFields = [
       'mondayOpen', 'mondayClose', 'tuesdayOpen', 'tuesdayClose',
@@ -154,21 +130,13 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
         let value = updates[key];
         if (numericFields.includes(key)) {
           const parsed = parseInt(value, 10);
-          if (!isNaN(parsed)) {
-            value = parsed;
-          } else {
-            console.warn(`[WARN] Skipping invalid number for ${key}:`, value);
-            continue; // skip invalid numeric value
-          }
+          if (!isNaN(parsed)) value = parsed;
+          else continue;
         }
         if (timeFields.includes(key)) {
           const normalized = normalizeTime(value);
-          if (normalized) {
-            value = normalized;
-          } else {
-            console.warn(`[WARN] Skipping invalid time for ${key}:`, value);
-            continue; // skip invalid time
-          }
+          if (normalized) value = normalized;
+          else continue;
         }
         sanitizedUpdates[key] = value;
       } else {
@@ -176,19 +144,12 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
       }
     }
 
-    if (droppedFields.length > 0) {
-      console.warn('[DEBUG] Dropped invalid or non-editable fields from updateConfig:', droppedFields);
-    }
-
-    if (Object.keys(sanitizedUpdates).length === 0) {
+    if (!Object.keys(sanitizedUpdates).length) {
       return res.status(400).json({ error: 'No valid fields to update', droppedFields });
     }
 
-    console.log('[DEBUG] Sanitized updates:', sanitizedUpdates);
-
     const result = await base('restaurantMap').update(records[0].id, sanitizedUpdates);
-    setRefreshFlag(restaurantId); // <-- Trigger refresh flag
-    console.log('[DEBUG] Config update result ID:', result.id);
+    setRefreshFlag(restaurantId);
     res.setHeader('Content-Type', 'application/json');
     return res.status(200).json({ success: true, updated: result, droppedFields });
   } catch (err) {
@@ -197,13 +158,11 @@ dashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
   }
 });
 
-// ✅ GET /api/dashboard/:restaurantId/refreshFlag
-dashboardRouter.get('/:restaurantId/refreshFlag', async (req, res) => {
-  console.log('[DEBUG] dashboardRouter GET /refreshFlag called');
+// GET refreshFlag
+dashboardRouter.get('/:restaurantId/refreshFlag', authIfNotPublic, async (req, res) => {
   const restaurantId = enforceRestaurantAccess(req, res);
   if (!restaurantId) return;
-
   const flag = refreshFlags[restaurantId] || 0;
-  refreshFlags[restaurantId] = 0; // Reset after read
+  refreshFlags[restaurantId] = 0;
   return res.status(200).json({ refresh: flag });
 });
