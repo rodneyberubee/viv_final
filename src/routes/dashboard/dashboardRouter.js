@@ -17,8 +17,14 @@ export const setRefreshFlag = (restaurantId) => {
   console.log(`[DEBUG] Refresh flag set for ${restaurantId}`);
 };
 
-// ✅ Protect all dashboard routes
-dashboardRouter.use(requireAuth);
+// ✅ Protect all dashboard routes except mollyscafe1 (public demo)
+dashboardRouter.use((req, res, next) => {
+  if (req.params.restaurantId === 'mollyscafe1') {
+    console.log('[AUTH] Public demo access granted for mollyscafe1');
+    return next();
+  }
+  return requireAuth(req, res, next);
+});
 
 // Helper to enforce restaurantId match
 const enforceRestaurantAccess = (req, res) => {
@@ -27,8 +33,12 @@ const enforceRestaurantAccess = (req, res) => {
     res.status(400).json({ error: 'Missing restaurantId in URL' });
     return null;
   }
-  if (req.user.restaurantId !== restaurantId) {
-    console.warn(`[AUTH] Forbidden access attempt by ${req.user.email} for ${restaurantId}`);
+  if (restaurantId === 'mollyscafe1') {
+    // Public demo — no user check
+    return restaurantId;
+  }
+  if (req.user?.restaurantId !== restaurantId) {
+    console.warn(`[AUTH] Forbidden access attempt by ${req.user?.email || 'unknown'} for ${restaurantId}`);
     res.status(403).json({ error: 'forbidden' });
     return null;
   }
