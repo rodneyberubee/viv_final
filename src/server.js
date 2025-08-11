@@ -17,7 +17,7 @@ import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
-import { demoDashboardRouter } from './routes/dashboard/demoDashboardRouter.js'; // ⬅️ NEW: demo router (no auth)
+import { demoDashboardRouter } from './routes/dashboard/demoDashboardRouter.js'; // ⬅️ demo router (no auth)
 import accountRouter from './routes/account/accountRouter.js';
 import loginRouter from './routes/auth/login.js';     // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';   // ✅ Handles /verify
@@ -33,16 +33,28 @@ const PORT = process.env.PORT || 5000;
 console.log(`[BOOT] MODE=${process.env.MODE || 'live'}`);
 console.log('[BOOT] Canonical Stripe/Paddle webhook URL: /api/webhook');
 
-// CORS config (relaxed for testing)
+// ---------- CORS (relaxed for demo + preview builds) ----------
 const allowedOrigins = [
   'http://localhost:3000',
   'https://vivaitable.com',
   'https://www.vivaitable.com',
   'https://hoppscotch.io'
 ];
+
+// Allow vercel preview branches like https://branch-user-app.vercel.app
+const isVercelPreview = (origin) => {
+  if (!origin) return false;
+  try {
+    const { host } = new URL(origin);
+    return host.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+};
+
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || isVercelPreview(origin)) {
       callback(null, true);
     } else {
       console.warn('[CORS] Blocked origin:', origin);
@@ -50,8 +62,18 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  // Allow both header casings to make preflights happy
-  allowedHeaders: ['Content-Type', 'Authorization', 'Stripe-Signature', 'stripe-signature'],
+  // Make preflights happy across browsers and fetch libs
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Stripe-Signature',
+    'stripe-signature',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cache-Control',
+    'Pragma'
+  ],
   credentials: true
 };
 
@@ -74,7 +96,7 @@ app.get('/api/webhook', (req, res) => {
 
 // === Debugging middleware to log all requests ===
 app.use((req, res, next) => {
-  console.log(`[DEBUG] ${req.method} ${req.url}`);
+  console.log(`[DEBUG] ${req.method} ${req.url} (origin=${req.headers.origin || 'n/a'})`);
   next();
 });
 
