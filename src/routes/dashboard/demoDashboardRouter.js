@@ -1,10 +1,10 @@
 // routes/dashboard/demoDashboardRouter.js
 import express from 'express';
 import { DateTime } from 'luxon';
-import { getReservations } from '../../utils/dashboard/getReservations.js';
-import { updateReservations } from '../../utils/dashboard/updateReservations.js';
-import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
-import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
+import { getReservations } from '../../getReservations.js';
+import { updateReservations } from '../../updateReservations.js';
+import { dashboardConfig } from '../../dashboardConfig.js';
+import { getAirtableBase } from '../../airtableHelpers.js';
 
 export const demoDashboardRouter = express.Router();
 
@@ -56,7 +56,7 @@ const normalizeTime = (value) => {
 
 // GET /api/demo-dashboard/:restaurantId/reservations
 demoDashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
-  console.log('[DEBUG] [demo] GET /reservations called');
+  console.log('[DEBUG] [demo] GET /reservations origin=%s rid=%s', req.headers.origin, req.params.restaurantId);
   const restaurantId = enforceDemoAccess(req, res);
   if (!restaurantId) return;
 
@@ -72,7 +72,7 @@ demoDashboardRouter.get('/:restaurantId/reservations', async (req, res) => {
 
 // POST /api/demo-dashboard/:restaurantId/updateReservation
 demoDashboardRouter.post('/:restaurantId/updateReservation', async (req, res) => {
-  console.log('[DEBUG] [demo] POST /updateReservation called');
+  console.log('[DEBUG] [demo] POST /updateReservation origin=%s rid=%s', req.headers.origin, req.params.restaurantId);
   const restaurantId = enforceDemoAccess(req, res);
   if (!restaurantId) return;
 
@@ -94,7 +94,7 @@ demoDashboardRouter.post('/:restaurantId/updateReservation', async (req, res) =>
 
 // GET /api/demo-dashboard/:restaurantId/config
 demoDashboardRouter.get('/:restaurantId/config', async (req, res) => {
-  console.log('[DEBUG] [demo] GET /config called');
+  console.log('[DEBUG] [demo] GET /config origin=%s rid=%s', req.headers.origin, req.params.restaurantId);
   const restaurantId = enforceDemoAccess(req, res);
   if (!restaurantId) return;
 
@@ -111,7 +111,7 @@ demoDashboardRouter.get('/:restaurantId/config', async (req, res) => {
 
 // POST /api/demo-dashboard/:restaurantId/updateConfig
 demoDashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
-  console.log('[DEBUG] [demo] POST /updateConfig called');
+  console.log('[DEBUG] [demo] POST /updateConfig origin=%s rid=%s', req.headers.origin, req.params.restaurantId);
   const restaurantId = enforceDemoAccess(req, res);
   if (!restaurantId) return;
 
@@ -193,7 +193,7 @@ demoDashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
 
 // GET /api/demo-dashboard/:restaurantId/refreshFlag
 demoDashboardRouter.get('/:restaurantId/refreshFlag', (req, res) => {
-  console.log('[DEBUG] [demo] GET /refreshFlag called');
+  console.log('[DEBUG] [demo] GET /refreshFlag origin=%s rid=%s', req.headers.origin, req.params.restaurantId);
   const restaurantId = enforceDemoAccess(req, res);
   if (!restaurantId) return;
 
