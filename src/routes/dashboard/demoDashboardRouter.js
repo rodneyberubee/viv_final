@@ -1,10 +1,12 @@
 // routes/dashboard/demoDashboardRouter.js
 import express from 'express';
 import { DateTime } from 'luxon';
-import { getReservations } from '../../getReservations.js';
-import { updateReservations } from '../../updateReservations.js';
-import { dashboardConfig } from '../../dashboardConfig.js';
-import { getAirtableBase } from '../../airtableHelpers.js';
+
+// ✅ FIXED: point to actual locations under utils/dashboard
+import { getReservations } from '../../utils/dashboard/getReservations.js';
+import { updateReservations } from '../../utils/dashboard/updateReservations.js';
+import { dashboardConfig } from '../../utils/dashboard/dashboardConfig.js';
+import { getAirtableBase } from '../../utils/dashboard/airtableHelpers.js';
 
 export const demoDashboardRouter = express.Router();
 
@@ -119,6 +121,11 @@ demoDashboardRouter.post('/:restaurantId/updateConfig', async (req, res) => {
 
   try {
     const base = getAirtableBase(process.env.MASTER_BASE_ID);
+    if (!base) {
+      console.error('[ERROR] [demo] Airtable base not initialized. Check MASTER_BASE_ID/AIRTABLE_API_KEY.');
+      return res.status(500).json({ error: 'server_config_error' });
+    }
+
     const formula = `{restaurantId} = "${restaurantId}"`;
     const records = await base('restaurantMap').select({ filterByFormula: formula }).firstPage();
 
