@@ -17,7 +17,7 @@ import { changeReservation } from './routes/changeReservation.js';
 import { checkAvailability } from './routes/checkAvailability.js';
 import { askVivRouter } from './routes/askVivRouter.js';
 import { dashboardRouter } from './routes/dashboard/dashboardRouter.js';
-import { demoDashboardRouter } from './routes/dashboard/demoDashboardRouter.js'; // ⬅️ demo router (no auth)
+import { demoDashboardRouter } from './routes/dashboard/demoDashboardRouter.js'; // demo router (no auth)
 import accountRouter from './routes/account/accountRouter.js';
 import loginRouter from './routes/auth/login.js';     // ✅ Handles /request
 import verifyRouter from './routes/auth/verify.js';   // ✅ Handles /verify
@@ -106,13 +106,9 @@ app.use(express.json());
 // ROUTES
 app.use('/api/askViv/:restaurantId', askVivRouter);
 
-// Demo Dashboard (no auth) – scoped endpoints like /api/demo-dashboard/:restaurantId/...
-if (process.env.DEMO_DASHBOARD === '1') {
-  console.log('[BOOT] Demo dashboard router ENABLED');
-  app.use('/api/demo-dashboard', demoDashboardRouter);
-} else {
-  console.log('[BOOT] Demo dashboard router disabled (set DEMO_DASHBOARD=1 to enable)');
-}
+// Demo Dashboard (no auth) – ALWAYS ON
+console.log('[BOOT] Demo dashboard router ENABLED (always-on)');
+app.use('/api/demo-dashboard', demoDashboardRouter);
 
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/account', accountRouter);
