@@ -20,29 +20,38 @@ export async function updateReservations(restaurantId, updatesArray) {
     const results = [];
     for (const { recordId, updatedFields } of updatesArray) {
       try {
-        const excludedFields = ['confirmationCode', 'rawConfirmationCode', 'dateFormatted'];
+        // Only exclude true formula/display fields. Keep shotgun for everything else.
+        const excludedFields = ['confirmationCode', 'dateFormatted'];
         let filteredFields = Object.fromEntries(
           Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
         );
 
-        // Normalize partySize for Airtable (convert to number or null)
-        if (filteredFields.hasOwnProperty('partySize')) {
-          if (filteredFields.partySize === '' || filteredFields.partySize === undefined) {
-            filteredFields.partySize = null;
-          } else {
-            filteredFields.partySize = parseInt(filteredFields.partySize, 10) || null;
-          }
+        // Tolerate dashboard typo -> map to preferred key without breaking existing data.
+        if ('conatactInfo' in filteredFields && !('contactInfo' in filteredFields)) {
+          filteredFields.contactInfo = filteredFields.conatactInfo;
+          delete filteredFields.conatactInfo;
         }
 
+        // Normalize partySize for Airtable (convert to number or null). Leave other time-like text fields as-is.
+        if (Object.prototype.hasOwnProperty.call(filteredFields, 'partySize')) {
+          const v = filteredFields.partySize;
+          filteredFields.partySize =
+            v === '' || v === undefined ? null : (parseInt(v, 10) || null);
+        }
+
+        // Always tag with routing key; no auto-defaults for date/time fields.
         filteredFields.restaurantId = restaurantId;
 
-        if (!recordId) {
-          filteredFields = {
-            ...filteredFields,
-            restaurantId,
-            date: updatedFields.date || new Date().toISOString().split('T')[0],
-          };
-        }
+        // Remove auto "today" default on create to keep full manual control.
+        // If creating without a recordId, just send what the dashboard provided.
+        // (Previously this block injected a default date—intentionally removed.)
+        // if (!recordId) {
+        //   filteredFields = {
+        //     ...filteredFields,
+        //     restaurantId,
+        //     date: updatedFields.date || new Date().toISOString().split('T')[0],
+        //   };
+        // }
 
         console.log('[DEBUG] Final fields sent to Airtable:', filteredFields);
 
