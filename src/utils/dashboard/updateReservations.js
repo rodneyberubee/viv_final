@@ -20,7 +20,7 @@ export async function updateReservations(restaurantId, updatesArray) {
     const results = [];
     for (const { recordId, updatedFields } of updatesArray) {
       try {
-        // Only exclude true formula/display fields. Keep shotgun for everything else.
+        // Shotgun: exclude only true formula/display fields.
         const excludedFields = ['confirmationCode', 'dateFormatted'];
         let filteredFields = Object.fromEntries(
           Object.entries(updatedFields).filter(([key]) => !excludedFields.includes(key))
@@ -32,26 +32,20 @@ export async function updateReservations(restaurantId, updatesArray) {
           delete filteredFields.conatactInfo;
         }
 
-        // Normalize partySize for Airtable (convert to number or null). Leave other time-like text fields as-is.
+        // Normalize partySize for Airtable (convert to number or null). Leave time-like text fields as-is.
         if (Object.prototype.hasOwnProperty.call(filteredFields, 'partySize')) {
           const v = filteredFields.partySize;
           filteredFields.partySize =
             v === '' || v === undefined ? null : (parseInt(v, 10) || null);
         }
 
-        // Always tag with routing key; no auto-defaults for date/time fields.
+        // Always tag with routing key; keep full manual control (no auto defaults).
         filteredFields.restaurantId = restaurantId;
 
-        // Remove auto "today" default on create to keep full manual control.
-        // If creating without a recordId, just send what the dashboard provided.
-        // (Previously this block injected a default date—intentionally removed.)
-        // if (!recordId) {
-        //   filteredFields = {
-        //     ...filteredFields,
-        //     restaurantId,
-        //     date: updatedFields.date || new Date().toISOString().split('T')[0],
-        //   };
-        // }
+        // Avoid sending undefined values to Airtable (can cause surprises in some SDK versions).
+        filteredFields = Object.fromEntries(
+          Object.entries(filteredFields).filter(([, v]) => v !== undefined)
+        );
 
         console.log('[DEBUG] Final fields sent to Airtable:', filteredFields);
 
